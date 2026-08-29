@@ -5,6 +5,7 @@ import "./globals.css";
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://quimicativa-gestao.dudinha5896458754.chatgpt.site"),
   title: "Quimicativa | Gestão Integrada",
   description: "Central executiva para gestão de pessoas, operações, vendas e finanças da Quimicativa.",
   openGraph: {
