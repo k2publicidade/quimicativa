@@ -14,6 +14,7 @@ export const records = sqliteTable("records", {
   module: text("module").notNull(),
   title: text("title").notNull(),
   description: text("description"),
+  metadata: text("metadata").notNull().default("{}"),
   status: text("status").notNull().default("active"),
   priority: text("priority", { enum: ["low", "medium", "high", "critical"] }).notNull().default("medium"),
   ownerId: text("owner_id").references(() => users.id),
