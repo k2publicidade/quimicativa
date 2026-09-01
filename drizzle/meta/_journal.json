@@ -29,6 +29,13 @@
       "when": 1788070844750,
       "tag": "0003_sour_bastion",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788235299685,
+      "tag": "0004_stiff_marten_broadcloak",
+      "breakpoints": true
     }
   ]
 }

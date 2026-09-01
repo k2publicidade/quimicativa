@@ -1,0 +1,32 @@
+/* Módulo Produtos e Conformidade */
+.product-stats{grid-template-columns:repeat(4,1fr)}
+.product-stats article.alert strong{color:#cf4f4f}
+.product-tabs{display:flex;gap:8px;margin:18px 0 14px;flex-wrap:wrap}
+.product-tab{border:1px solid var(--line);background:#fff;color:#5f6f83;border-radius:10px;padding:10px 16px;font-size:10px;font-weight:750;transition:.2s}
+.product-tab:hover{border-color:#d5dce4}
+.product-tab.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.product-tab span{background:#e8eef6;color:#2d6fc8;border-radius:9px;padding:2px 8px;margin-left:8px;font-size:9px;font-weight:800}
+.product-tab.active span{background:#33496b;color:#aac4ef}
+.alert-badge{display:inline-block;border-radius:11px;padding:5px 9px;font-size:8px;font-weight:800;white-space:nowrap}
+.alert-badge.ok{background:#e6f5ef;color:#178869}
+.alert-badge.warn{background:#fff3df;color:#c47b1e}
+.alert-badge.danger{background:#fee9e8;color:#cf4f4f}
+.compliance-tag{display:inline-block;background:#f0ebfb;color:#7453bd;border-radius:9px;padding:4px 8px;font-size:7px;font-weight:800;margin:2px 4px 2px 0}
+.compliance-tag.controlled{background:#fee9e8;color:#cf4f4f}
+.compliance-tag.flammable{background:#fff0db;color:#bb741a}
+.fefo-callout{background:#eef6f4;border:1px solid #cfe5e0;border-radius:10px;padding:14px 16px;margin-top:12px}
+.fefo-callout strong{color:#176f83;font-size:10px;display:block;margin-bottom:8px}
+.fefo-callout ol{margin:0;padding-left:20px;color:#4b6e66;font-size:9px;line-height:1.9}
+.product-modal-card{background:#fff;border-radius:16px;max-width:620px;width:calc(100vw - 32px);max-height:86vh;overflow:auto;padding:22px}
+.product-modal-card header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px}
+.product-modal-card header span{font-size:8px;letter-spacing:1px;color:#8390a1;font-weight:800}
+.product-modal-card header h3{margin:4px 0 0;font-size:15px}
+.product-modal-card header button{border:0;background:#f0f2f5;width:28px;height:28px;border-radius:8px;font-size:14px}
+.product-modal-card footer{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.check-field{display:flex;align-items:center;gap:8px;padding-top:18px;font-weight:700}
+.check-field input{width:16px;height:16px;accent-color:#2aa99a}
+.cert-editor{border:1px dashed #d5dce4;border-radius:10px;padding:12px}
+.cert-label{display:block;font-size:8px;color:#8390a1;font-weight:800;letter-spacing:.4px;margin-bottom:8px}
+.cert-row{display:flex;gap:8px;margin-bottom:8px}
+.cert-row input{flex:1}
+@media(max-width:720px){.product-stats{grid-template-columns:1fr 1fr}.cert-row{flex-direction:column}}

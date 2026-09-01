@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getModuleConfig } from "./module-config";
 import DocumentCenter, { RecordDocuments } from "./DocumentCenter";
+import ProductCenter from "./ProductCenter";
 
 type Module = {
   name: string;
@@ -48,6 +49,15 @@ const departments: Record<string, Department> = {
     summary:
       "Transforme documentos físicos em um acervo privado, classificado e rastreável.",
     color: "#176f83",
+    modules: [],
+  },
+  produtos: {
+    code: "PQ",
+    name: "Produtos",
+    eyebrow: "CATÁLOGO E CONFORMIDADE REGULATÓRIA",
+    summary:
+      "Cadastre produtos, lotes com validade, FISPQ, licenças e fornecedores com alerta antes do prazo.",
+    color: "#b0562e",
     modules: [],
   },
   rh: {
@@ -449,6 +459,8 @@ export default function Dashboard() {
             <ExecutiveView onOpen={switchArea} />
           ) : active === "digitalizacao" ? (
             <DocumentCenter notify={notify} />
+          ) : active === "produtos" ? (
+            <ProductCenter notify={notify} />
           ) : selectedModule ? (
             <ModuleWorkspace
               module={selectedModule}
@@ -501,6 +513,17 @@ function ExecutiveView({ onOpen }: { onOpen: (key: string) => void }) {
       documents: number;
       review: number;
       expiring: number;
+      products: number;
+    };
+    compliance?: {
+      totalAlerts: number;
+      fispqMissing: number;
+      fispqExpired: number;
+      fispqExpiring: number;
+      lotsExpired: number;
+      lotsExpiring: number;
+      licensesExpired: number;
+      licensesExpiring: number;
     };
     recent: Array<{
       title: string;
@@ -595,6 +618,16 @@ function ExecutiveView({ onOpen }: { onOpen: (key: string) => void }) {
                 <strong>Conferência documental</strong>
                 <small>
                   {data?.metrics?.review ?? 0} documento(s) aguardando revisão
+                </small>
+              </div>
+            </li>
+            <li onClick={() => onOpen("produtos")}>
+              <span className="task-icon red">FQ</span>
+              <div>
+                <strong>Conformidade regulatória</strong>
+                <small>
+                  {data?.compliance?.totalAlerts ?? 0} alerta(s) em FISPQ, lotes
+                  e licenças
                 </small>
               </div>
             </li>

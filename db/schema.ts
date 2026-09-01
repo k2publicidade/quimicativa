@@ -80,3 +80,85 @@ export const auditLog = sqliteTable("audit_log", {
   details: text("details"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 }, table => [index("idx_audit_entity").on(table.entityType, table.entityId), index("idx_audit_created_at").on(table.createdAt)]);
+
+export const products = sqliteTable("products", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  category: text("category").notNull().default("Outros"),
+  concentration: text("concentration"),
+  unNumber: text("un_number"),
+  hazardClass: text("hazard_class"),
+  signalWord: text("signal_word"),
+  hPhrases: text("h_phrases").notNull().default("[]"),
+  pPhrases: text("p_phrases").notNull().default("[]"),
+  controlled: integer("controlled").notNull().default(0),
+  controlAgency: text("control_agency"),
+  flammable: integer("flammable").notNull().default(0),
+  storage: text("storage"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_products_category").on(table.category), index("idx_products_status").on(table.status)]);
+
+export const lots = sqliteTable("lots", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id").notNull().references(() => products.id),
+  lotNumber: text("lot_number").notNull(),
+  manufactureDate: integer("manufacture_date", { mode: "timestamp" }),
+  expiryDate: integer("expiry_date", { mode: "timestamp" }),
+  quantity: integer("quantity").notNull().default(0),
+  unit: text("unit").notNull().default("un"),
+  location: text("location"),
+  notes: text("notes"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_lots_product_id").on(table.productId), index("idx_lots_expiry_date").on(table.expiryDate)]);
+
+export const suppliers = sqliteTable("suppliers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyName: text("company_name").notNull(),
+  cnpj: text("cnpj").notNull().unique(),
+  stateRegistration: text("state_registration"),
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  certificates: text("certificates").notNull().default("[]"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_suppliers_status").on(table.status)]);
+
+export const fispq = sqliteTable("fispq", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id").notNull().references(() => products.id),
+  version: text("version").notNull().default("1"),
+  issueDate: integer("issue_date", { mode: "timestamp" }),
+  validityDate: integer("validity_date", { mode: "timestamp" }),
+  fileKey: text("file_key"),
+  fileName: text("file_name"),
+  fileSize: integer("file_size"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_fispq_product_id").on(table.productId), index("idx_fispq_validity_date").on(table.validityDate)]);
+
+export const licenses = sqliteTable("licenses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  licenseType: text("license_type").notNull(),
+  issuingAgency: text("issuing_agency").notNull(),
+  number: text("number").notNull(),
+  validityDate: integer("validity_date", { mode: "timestamp" }),
+  scope: text("scope"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_licenses_validity_date").on(table.validityDate), index("idx_licenses_status").on(table.status)]);
