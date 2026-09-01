@@ -588,6 +588,18 @@ export const moduleConfigs: Record<string, ModuleConfig> = {
         "Sorocaba / SP",
         "Goiânia / GO",
       ]),
+      f(
+        "lgpdBasis",
+        "Base legal dos dados (LGPD)",
+        "select",
+        ["Consentimento", "Execução de contrato", "Obrigação legal"],
+        [
+          "Consentimento",
+          "Execução de contrato",
+          "Obrigação legal",
+          "Legítimo interesse",
+        ],
+      ),
     ],
     samples: [
       "Indústria Norte Ltda.",

@@ -517,6 +517,7 @@ export default function Dashboard() {
           module={selectedModule}
           department={active}
           notify={notify}
+          canAnonymize={profile.role === "ceo" || profile.role === "manager"}
           onClose={() => setDrawer(null)}
           onEdit={() => setDrawer({ mode: "edit", record: drawer.record })}
           onSubmit={saveRecord}
@@ -1032,6 +1033,7 @@ function RecordDrawer({
   onClose,
   onEdit,
   onSubmit,
+  canAnonymize = false,
 }: {
   state: DrawerState;
   module: Module;
@@ -1040,6 +1042,7 @@ function RecordDrawer({
   onClose: () => void;
   onEdit: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  canAnonymize?: boolean;
 }) {
   const view = state.mode === "view",
     record = state.record,
@@ -1054,6 +1057,29 @@ function RecordDrawer({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+  const anonymize = async () => {
+    if (!record) return;
+    const reason = window.prompt(
+      "Motivo da anonimização (ex.: solicitação do titular — art. 18 da LGPD):",
+    );
+    if (!reason?.trim()) return;
+    if (
+      !window.confirm(
+        "Anonimizar remove os dados pessoais deste registro. O histórico de negócio é preservado. Continuar?",
+      )
+    )
+      return;
+    const r = await fetch("/api/privacy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recordId: record.id, reason }),
+      }),
+      data = await r.json();
+    if (r.ok) {
+      notify(data.message || "Registro anonimizado");
+      onClose();
+    } else notify(data.error || "Não foi possível anonimizar o registro");
+  };
   return (
     <div className="drawer-backdrop" onMouseDown={onClose}>
       <aside
@@ -1138,6 +1164,11 @@ function RecordDrawer({
               <button className="secondary-button" onClick={onClose}>
                 Fechar
               </button>
+              {canAnonymize && (
+                <button className="secondary-button danger" onClick={anonymize}>
+                  Anonimizar (LGPD)
+                </button>
+              )}
               <button className="primary-button" onClick={onEdit}>
                 Editar {config.singular}
               </button>

@@ -566,3 +566,13 @@
 .review-extracted input{border:1px solid var(--line);border-radius:7px;padding:6px;font-size:9px;min-width:0}
 .review-notes{grid-column:1/-1}
 .review-fields{min-width:280px}
+
+
+.preview-card{background:#fff;border-radius:16px;max-width:860px;width:calc(100vw - 32px);max-height:90vh;overflow:auto;padding:22px}
+.preview-card header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.preview-card header span{font-size:8px;letter-spacing:1px;color:#8390a1;font-weight:800}
+.preview-card header h3{margin:4px 0 0;font-size:15px;word-break:break-all}
+.preview-card header button{border:0;background:#f0f2f5;width:28px;height:28px;border-radius:8px;font-size:14px}
+.preview-frame{width:100%;height:62vh;border:1px solid var(--line);border-radius:10px;background:#fff}
+.preview-hint{font-size:9px;color:#5f6f83;line-height:1.6;margin:12px 0 0}
+.preview-card footer{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}

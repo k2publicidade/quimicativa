@@ -123,7 +123,8 @@ export async function GET(request: NextRequest) {
       { status: 401 },
     );
   const db = getD1(),
-    downloadId = Number(request.nextUrl.searchParams.get("download"));
+    downloadId = Number(request.nextUrl.searchParams.get("download")),
+    previewId = Number(request.nextUrl.searchParams.get("preview"));
   if (Number.isInteger(downloadId) && downloadId > 0) {
     const row = await db
       .prepare("SELECT * FROM files WHERE id=?")
@@ -166,17 +167,71 @@ export async function GET(request: NextRequest) {
       },
     });
   }
-  const recordId = Number(request.nextUrl.searchParams.get("recordId"));
+  if (Number.isInteger(previewId) && previewId > 0) {
+    const row = await db
+      .prepare("SELECT * FROM files WHERE id=?")
+      .bind(previewId)
+      .first<FileRow>();
+    if (!row)
+      return NextResponse.json(
+        { error: "Documento não encontrado" },
+        { status: 404 },
+      );
+    if (row.confidentiality !== "internal" && !canReadConfidential(user))
+      return NextResponse.json(
+        { error: "Documento restrito à direção" },
+        { status: 403 },
+      );
+    const object = await getFiles().get(row.storage_key);
+    if (!object)
+      return NextResponse.json(
+        { error: "Arquivo indisponível" },
+        { status: 404 },
+      );
+    try {
+      await db
+        .prepare(
+          "INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'view','file',?,?,?)",
+        )
+        .bind(
+          user.userId,
+          String(row.id),
+          JSON.stringify({ filename: row.filename, preview: true }),
+          Math.floor(Date.now() / 1000),
+        )
+        .run();
+    } catch {
+      // a prévia não pode falhar por causa da auditoria
+    }
+    return new Response(object.body, {
+      headers: {
+        "Content-Type": row.content_type,
+        "Content-Length": String(row.size_bytes),
+        "Content-Disposition": `inline; filename="${safeName(row.filename)}"`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
+  const recordId = Number(request.nextUrl.searchParams.get("recordId")),
+    searchQ = String(request.nextUrl.searchParams.get("q") || "").trim(),
+    like = `%${searchQ}%`,
+    confFilter = canReadConfidential(user) ? "" : "f.confidentiality = 'internal'",
+    searchClause = searchQ
+      ? "(f.filename LIKE ? OR f.ocr_text LIKE ? OR f.document_type LIKE ? OR r.title LIKE ?)"
+      : "",
+    whereList = [confFilter, searchClause].filter(Boolean),
+    whereClause = whereList.length ? ` WHERE ${whereList.join(" AND ")}` : "";
   const query =
     Number.isInteger(recordId) && recordId > 0
       ? db
           .prepare(
-            `SELECT f.*,r.title AS record_title FROM files f JOIN records r ON r.id=f.record_id WHERE f.record_id=? ${canReadConfidential(user) ? "" : "AND f.confidentiality = 'internal'"} ORDER BY f.created_at DESC`,
+            `SELECT f.*,r.title AS record_title FROM files f JOIN records r ON r.id=f.record_id WHERE f.record_id=? ${[confFilter, searchClause].filter(Boolean).join(" AND ")} ORDER BY f.created_at DESC LIMIT 500`,
           )
-          .bind(recordId)
+          .bind(recordId, ...(searchQ ? [like, like, like, like] : []))
       : db.prepare(
-          `SELECT f.*,r.title AS record_title FROM files f JOIN records r ON r.id=f.record_id ${canReadConfidential(user) ? "" : "WHERE f.confidentiality = 'internal'"} ORDER BY f.created_at DESC LIMIT 100`,
-        );
+          `SELECT f.*,r.title AS record_title FROM files f JOIN records r ON r.id=f.record_id${whereClause} ORDER BY f.created_at DESC LIMIT 500`,
+        ).bind(...(searchQ ? [like, like, like, like] : []));
   const result = await query.all<FileRow>();
   const docs = result.results.map(serialize),
     now = Math.floor(Date.now() / 1000),
@@ -200,6 +255,16 @@ export async function GET(request: NextRequest) {
     batches = await db
       .prepare("SELECT * FROM intake_batches ORDER BY updated_at DESC LIMIT 30")
       .all<Record<string, unknown>>();
+  let searchTotal: number | null = null;
+  if (searchQ) {
+    const countRow = await db
+      .prepare(
+        `SELECT COUNT(*) total FROM files f JOIN records r ON r.id=f.record_id${whereClause}`,
+      )
+      .bind(...(searchQ ? [like, like, like, like] : []))
+      .first<{ total: number }>();
+    searchTotal = countRow?.total ?? 0;
+  }
   const byDepartment = Object.fromEntries(
     departmentStats.results.map((row) => [row.department, row.total]),
   );
@@ -207,7 +272,7 @@ export async function GET(request: NextRequest) {
     documents: docs,
     batches: batches.results,
     summary: {
-      total: stats?.total ?? 0,
+      total: searchTotal ?? stats?.total ?? 0,
       toReview: stats?.to_review ?? 0,
       expiring: stats?.expiring ?? 0,
       indexed: stats?.count_indexed ?? 0,
@@ -718,6 +783,22 @@ export async function PUT(request: NextRequest) {
       { error: "Informe o motivo da rejeição" },
       { status: 400 },
     );
+  if (next === "validated" && next !== current.status) {
+    const viewed = await db
+      .prepare(
+        "SELECT id FROM audit_log WHERE actor_id=? AND action='view' AND entity_type='file' AND entity_id=? LIMIT 1",
+      )
+      .bind(user.userId, String(id))
+      .first();
+    if (!viewed)
+      return NextResponse.json(
+        {
+          error:
+            "Abra o documento na tela para conferência antes de validar. A conferência sem visualização não tem valor.",
+        },
+        { status: 423 },
+      );
+  }
   const clientVersion = Number(body.version),
     versionConflict =
       Number.isInteger(clientVersion) &&

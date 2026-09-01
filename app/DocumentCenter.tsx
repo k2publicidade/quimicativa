@@ -183,11 +183,14 @@ export default function DocumentCenter({
     [module, setModule] = useState(areas.rh.modules[0]),
     [query, setQuery] = useState(""),
     [suggestions, setSuggestions] = useState<Suggestion[]>([]),
+    [preview, setPreview] = useState<DocumentItem | null>(null),
     [editing, setEditing] = useState<DocumentItem | null>(null);
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch("/api/documents");
+      const r = await fetch(
+        `/api/documents${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`,
+      );
       if (!r.ok) throw new Error();
       const data = await r.json();
       setDocs(data.documents);
@@ -201,23 +204,28 @@ export default function DocumentCenter({
   };
   useEffect(() => {
     let mounted = true;
-    fetch("/api/documents")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => {
-        if (mounted) {
-          setDocs(data.documents);
-          setBatches(data.batches ?? []);
-          setSummary(data.summary);
-        }
-      })
-      .catch(() => notify("Não foi possível carregar o acervo digital"))
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+    const timer = setTimeout(() => {
+      fetch(
+        `/api/documents${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ""}`,
+      )
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((data) => {
+          if (mounted) {
+            setDocs(data.documents);
+            setBatches(data.batches ?? []);
+            setSummary(data.summary);
+          }
+        })
+        .catch(() => notify("Não foi possível carregar o acervo digital"))
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
+    }, 300);
     return () => {
       mounted = false;
+      clearTimeout(timer);
     };
-  }, [notify]);
+  }, [query, notify]);
   const visible = useMemo(
     () =>
       docs.filter((d) =>
@@ -384,18 +392,9 @@ export default function DocumentCenter({
     let validationChecklist: Record<string, boolean> | undefined,
       rejectionReason = "";
     if (status === "validated") {
-      if (
-        !window.confirm(
-          "Confirma arquivo completo, legível, classificado e custódia física conferida?",
-        )
-      )
-        return;
-      validationChecklist = {
-        complete: true,
-        legible: true,
-        classified: true,
-        custody: true,
-      };
+      // Exige a prévia do documento na tela antes de validar (auditoria de visualização)
+      setPreview(doc);
+      return;
     }
     if (status === "rejected") {
       rejectionReason =
@@ -419,6 +418,39 @@ export default function DocumentCenter({
       );
       notify("Etapa de conferência atualizada");
     } else notify(data.error || "Não foi possível atualizar o documento");
+  };
+  const confirmValidation = async (doc: DocumentItem) => {
+    if (
+      !window.confirm(
+        "Confirma arquivo completo, legível, classificado e custódia física conferida?",
+      )
+    )
+      return;
+    const r = await fetch("/api/documents", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...doc,
+          status: "validated",
+          validationChecklist: {
+            complete: true,
+            legible: true,
+            classified: true,
+            custody: true,
+          },
+          rejectionReason: "",
+        }),
+      }),
+      data = await r.json();
+    setPreview(null);
+    if (r.ok) {
+      setDocs((list) =>
+        list.map((item) =>
+          item.id === doc.id ? { ...item, status: "validated" } : item,
+        ),
+      );
+      notify("Documento validado e registrado");
+    } else notify(data.error || "Não foi possível validar o documento");
   };
   const closeBatch = async (id: number) => {
     const r = await fetch("/api/batches", {
@@ -963,8 +995,9 @@ export default function DocumentCenter({
           <div>
             <h2>Acervo digital</h2>
             <p>
-              Documentos privados, rastreáveis e vinculados aos registros
-              operacionais.
+              {query.trim()
+                ? `${summary.total} resultado(s) para “${query.trim()}”`
+                : "Documentos privados, rastreáveis e vinculados aos registros operacionais."}
             </p>
           </div>
           <div className="archive-search">
@@ -972,7 +1005,7 @@ export default function DocumentCenter({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Arquivo, lote, local ou módulo..."
+              placeholder="Buscar por nome, conteúdo, lote, setor ou tipo..."
             />
           </div>
         </div>
@@ -1089,6 +1122,60 @@ export default function DocumentCenter({
           </div>
         )}
       </section>
+      {preview && (
+        <div
+          className="doc-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Conferir documento"
+          onMouseDown={() => setPreview(null)}
+        >
+          <div
+            className="preview-card"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div>
+                <span>CONFERÊNCIA OBRIGATÓRIA</span>
+                <h3>{preview.filename}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreview(null)}
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </header>
+            <iframe
+              title="Prévia do documento"
+              src={`/api/documents?preview=${preview.id}`}
+              className="preview-frame"
+            />
+            <p className="preview-hint">
+              Confira se o documento está completo, legível, com a classificação
+              e a custódia física corretas. Só valide depois de conferir na
+              tela.
+            </p>
+            <footer>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setPreview(null)}
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => confirmValidation(preview)}
+              >
+                Confirmar conferência e validar
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
       {editing && (
         <div
           className="doc-modal"
