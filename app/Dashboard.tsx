@@ -1,60 +1,1151 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getModuleConfig } from "./module-config";
+import DocumentCenter, { RecordDocuments } from "./DocumentCenter";
 
-type Module = { name: string; description: string; count: string; alert?: string };
-type Department = { code: string; name: string; eyebrow: string; summary: string; color: string; modules: Module[] };
-type RecordItem = { id:number; department:string; module:string; title:string; description:string; status:string; priority:string; dueDate:string; amountCents:number; metadata:Record<string,string>; updatedAt:number };
-type DrawerState = { mode:"view"|"edit"|"new"; record:RecordItem|null };
+type Module = {
+  name: string;
+  description: string;
+  count: string;
+  alert?: string;
+};
+type Department = {
+  code: string;
+  name: string;
+  eyebrow: string;
+  summary: string;
+  color: string;
+  modules: Module[];
+};
+type RecordItem = {
+  id: number;
+  department: string;
+  module: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  dueDate: string;
+  amountCents: number;
+  metadata: Record<string, string>;
+  updatedAt: number;
+};
+type DrawerState = { mode: "view" | "edit" | "new"; record: RecordItem | null };
 
 const departments: Record<string, Department> = {
-  dashboard: { code: "IN", name: "Visão geral", eyebrow: "PAINEL EXECUTIVO", summary: "Acompanhe os principais indicadores e pendências da sua empresa.", color: "#2aa99a", modules: [] },
-  rh: { code: "RH", name: "Recursos Humanos", eyebrow: "GESTÃO DE PESSOAS E CONFORMIDADE", summary: "Centralize colaboradores, documentos, equipamentos e licenças.", color: "#7657c8", modules: [
-    { name: "Funcionários", description: "Admissão, pagamentos e contratos", count: "42 ativos" }, { name: "EPI", description: "Entregas, termos e vencimentos", count: "186 itens", alert: "3 assinaturas" }, { name: "Uniformes", description: "Entrega e reposição por colaborador", count: "74 entregas" }, { name: "Caminhões – Documentos", description: "CRLV, seguros e licenciamento", count: "8 veículos", alert: "1 próximo" }, { name: "Caminhões – Manutenção", description: "Histórico e notas de serviço", count: "23 serviços" }, { name: "Licenças da Empresa", description: "Alvará, ambiental e SIPROQUIM", count: "6 licenças", alert: "1 urgente" }, { name: "Recrutamento e Seleção", description: "Vagas, candidatos e etapas", count: "12 candidatos" },
-  ]},
-  logistica: { code: "LG", name: "Logística", eyebrow: "OPERAÇÃO E DISTRIBUIÇÃO", summary: "Planeje rotas, comprove entregas e cuide dos equipamentos.", color: "#2876e5", modules: [
-    { name: "Rotas", description: "Planejamento e roteirização", count: "14 esta semana" }, { name: "Entregas", description: "Canhotos e comprovantes digitais", count: "128 no mês", alert: "5 pendentes" }, { name: "Equipamentos de Transporte", description: "Carrinhos, bombas e paleteiras", count: "31 ativos", alert: "2 manutenções" },
-  ]},
-  embalagem: { code: "EM", name: "Embalagem e Rotulagem", eyebrow: "PRODUÇÃO E RASTREABILIDADE", summary: "Gerencie artes, bombonas e insumos de embalagem.", color: "#d98d2e", modules: [
-    { name: "Rótulos", description: "Artes e modelos por produto", count: "36 modelos" }, { name: "Controle de Bombonas", description: "Movimentação e rastreabilidade", count: "1.248 unidades" }, { name: "Estoque de Embalagem", description: "Saldo, consumo e estoque mínimo", count: "82 itens", alert: "4 em baixa" },
-  ]},
-  vendas: { code: "VD", name: "Vendas", eyebrow: "RELACIONAMENTO E RECEITA", summary: "Conduza clientes da oportunidade ao pós-venda.", color: "#1c9b77", modules: [
-    { name: "Clientes", description: "Cadastro e histórico comercial", count: "284 ativos" }, { name: "Propostas e Orçamentos", description: "Pipeline, versões e aprovações", count: "R$ 326 mil", alert: "8 abertas" }, { name: "Pesquisa de Satisfação", description: "NPS e acompanhamento de respostas", count: "NPS 78" },
-  ]},
-  compras: { code: "CP", name: "Compras", eyebrow: "SUPRIMENTOS E FORNECEDORES", summary: "Controle cotações, pedidos e entradas fiscais.", color: "#d15c6d", modules: [
-    { name: "Fornecedores", description: "Cadastro e avaliação", count: "67 homologados" }, { name: "Pedidos de Compra", description: "Solicitação, aprovação e entrega", count: "21 em aberto", alert: "4 aprovações" }, { name: "Notas Fiscais de Entrada", description: "Conferência fiscal e recebimento", count: "96 no mês" },
-  ]},
-  financeiro: { code: "FN", name: "Financeiro", eyebrow: "FLUXO DE CAIXA E RESULTADOS", summary: "Acompanhe recebíveis, obrigações e resultado gerencial.", color: "#2473ca", modules: [
-    { name: "Notas Fiscais de Saída", description: "Emissão e acompanhamento", count: "R$ 487 mil" }, { name: "Boletos e Recebimentos", description: "Baixas, atrasos e conciliação", count: "18 em aberto", alert: "3 atrasados" }, { name: "Contas a Pagar", description: "Agenda e aprovações", count: "R$ 92 mil", alert: "6 esta semana" }, { name: "DRE e Relatórios", description: "Resultado e indicadores gerenciais", count: "Margem 24,7%" },
-  ]},
+  dashboard: {
+    code: "IN",
+    name: "Visão geral",
+    eyebrow: "PAINEL EXECUTIVO",
+    summary: "Acompanhe os principais indicadores e pendências da sua empresa.",
+    color: "#2aa99a",
+    modules: [],
+  },
+  digitalizacao: {
+    code: "AD",
+    name: "Acervo Digital",
+    eyebrow: "MIGRAÇÃO E CUSTÓDIA DOCUMENTAL",
+    summary:
+      "Transforme documentos físicos em um acervo privado, classificado e rastreável.",
+    color: "#176f83",
+    modules: [],
+  },
+  rh: {
+    code: "RH",
+    name: "Recursos Humanos",
+    eyebrow: "GESTÃO DE PESSOAS E CONFORMIDADE",
+    summary: "Centralize colaboradores, documentos, equipamentos e licenças.",
+    color: "#7657c8",
+    modules: [
+      {
+        name: "Funcionários",
+        description: "Admissão, pagamentos e contratos",
+        count: "42 ativos",
+      },
+      {
+        name: "EPI",
+        description: "Entregas, termos e vencimentos",
+        count: "186 itens",
+        alert: "3 assinaturas",
+      },
+      {
+        name: "Uniformes",
+        description: "Entrega e reposição por colaborador",
+        count: "74 entregas",
+      },
+      {
+        name: "Caminhões – Documentos",
+        description: "CRLV, seguros e licenciamento",
+        count: "8 veículos",
+        alert: "1 próximo",
+      },
+      {
+        name: "Caminhões – Manutenção",
+        description: "Histórico e notas de serviço",
+        count: "23 serviços",
+      },
+      {
+        name: "Licenças da Empresa",
+        description: "Alvará, ambiental e SIPROQUIM",
+        count: "6 licenças",
+        alert: "1 urgente",
+      },
+      {
+        name: "Recrutamento e Seleção",
+        description: "Vagas, candidatos e etapas",
+        count: "12 candidatos",
+      },
+    ],
+  },
+  logistica: {
+    code: "LG",
+    name: "Logística",
+    eyebrow: "OPERAÇÃO E DISTRIBUIÇÃO",
+    summary: "Planeje rotas, comprove entregas e cuide dos equipamentos.",
+    color: "#2876e5",
+    modules: [
+      {
+        name: "Rotas",
+        description: "Planejamento e roteirização",
+        count: "14 esta semana",
+      },
+      {
+        name: "Entregas",
+        description: "Canhotos e comprovantes digitais",
+        count: "128 no mês",
+        alert: "5 pendentes",
+      },
+      {
+        name: "Equipamentos de Transporte",
+        description: "Carrinhos, bombas e paleteiras",
+        count: "31 ativos",
+        alert: "2 manutenções",
+      },
+    ],
+  },
+  embalagem: {
+    code: "EM",
+    name: "Embalagem e Rotulagem",
+    eyebrow: "PRODUÇÃO E RASTREABILIDADE",
+    summary: "Gerencie artes, bombonas e insumos de embalagem.",
+    color: "#d98d2e",
+    modules: [
+      {
+        name: "Rótulos",
+        description: "Artes e modelos por produto",
+        count: "36 modelos",
+      },
+      {
+        name: "Controle de Bombonas",
+        description: "Movimentação e rastreabilidade",
+        count: "1.248 unidades",
+      },
+      {
+        name: "Estoque de Embalagem",
+        description: "Saldo, consumo e estoque mínimo",
+        count: "82 itens",
+        alert: "4 em baixa",
+      },
+    ],
+  },
+  vendas: {
+    code: "VD",
+    name: "Vendas",
+    eyebrow: "RELACIONAMENTO E RECEITA",
+    summary: "Conduza clientes da oportunidade ao pós-venda.",
+    color: "#1c9b77",
+    modules: [
+      {
+        name: "Clientes",
+        description: "Cadastro e histórico comercial",
+        count: "284 ativos",
+      },
+      {
+        name: "Propostas e Orçamentos",
+        description: "Pipeline, versões e aprovações",
+        count: "R$ 326 mil",
+        alert: "8 abertas",
+      },
+      {
+        name: "Pesquisa de Satisfação",
+        description: "NPS e acompanhamento de respostas",
+        count: "NPS 78",
+      },
+    ],
+  },
+  compras: {
+    code: "CP",
+    name: "Compras",
+    eyebrow: "SUPRIMENTOS E FORNECEDORES",
+    summary: "Controle cotações, pedidos e entradas fiscais.",
+    color: "#d15c6d",
+    modules: [
+      {
+        name: "Fornecedores",
+        description: "Cadastro e avaliação",
+        count: "67 homologados",
+      },
+      {
+        name: "Pedidos de Compra",
+        description: "Solicitação, aprovação e entrega",
+        count: "21 em aberto",
+        alert: "4 aprovações",
+      },
+      {
+        name: "Notas Fiscais de Entrada",
+        description: "Conferência fiscal e recebimento",
+        count: "96 no mês",
+      },
+    ],
+  },
+  financeiro: {
+    code: "FN",
+    name: "Financeiro",
+    eyebrow: "FLUXO DE CAIXA E RESULTADOS",
+    summary: "Acompanhe recebíveis, obrigações e resultado gerencial.",
+    color: "#2473ca",
+    modules: [
+      {
+        name: "Notas Fiscais de Saída",
+        description: "Emissão e acompanhamento",
+        count: "R$ 487 mil",
+      },
+      {
+        name: "Boletos e Recebimentos",
+        description: "Baixas, atrasos e conciliação",
+        count: "18 em aberto",
+        alert: "3 atrasados",
+      },
+      {
+        name: "Contas a Pagar",
+        description: "Agenda e aprovações",
+        count: "R$ 92 mil",
+        alert: "6 esta semana",
+      },
+      {
+        name: "DRE e Relatórios",
+        description: "Resultado e indicadores gerenciais",
+        count: "Margem 24,7%",
+      },
+    ],
+  },
 };
-const metrics = [{label:"Faturamento no mês",value:"R$ 487.250",note:"+12,4% vs. mês anterior",tone:"green"},{label:"Contas a receber",value:"R$ 128.400",note:"18 títulos em aberto",tone:"blue"},{label:"Entregas no prazo",value:"94,8%",note:"+2,1% neste mês",tone:"amber"},{label:"Pendências críticas",value:"7",note:"3 exigem ação hoje",tone:"red"}];
-const recent = [["NF-008741","Indústria Norte Ltda.","Nota fiscal de saída","R$ 18.420,00","Pago"],["PC-002184","Embalagens São Paulo","Pedido de compra","R$ 7.890,00","Aprovação"],["ENT-00632","Química Brasil S.A.","Entrega","Hoje, 14:30","Em rota"],["PROP-0348","Grupo Horizonte","Proposta comercial","R$ 42.500,00","Negociação"]];
 
 export default function Dashboard() {
-  const [active,setActive]=useState("dashboard"),[query,setQuery]=useState(""),[selectedModule,setSelectedModule]=useState<Module|null>(null),[records,setRecords]=useState<RecordItem[]>([]),[loading,setLoading]=useState(false),[drawer,setDrawer]=useState<DrawerState|null>(null),[toast,setToast]=useState("");
-  const current=departments[active]; const filteredModules=useMemo(()=>current.modules.filter(m=>`${m.name} ${m.description}`.toLowerCase().includes(query.toLowerCase())),[current,query]);
-  function notify(message:string){setToast(message);setTimeout(()=>setToast(""),2600)}
-  async function openModule(module:Module){setSelectedModule(module);setQuery("");setLoading(true);try{const response=await fetch(`/api/records?department=${encodeURIComponent(active)}&module=${encodeURIComponent(module.name)}`);if(!response.ok)throw new Error();const data=await response.json();setRecords(data.records)}catch{notify("Não foi possível carregar os registros")}finally{setLoading(false)}}
-  async function saveRecord(e:React.FormEvent<HTMLFormElement>){e.preventDefault();if(!selectedModule)return;const form=new FormData(e.currentTarget),isEdit=drawer?.mode==="edit",config=getModuleConfig(selectedModule.name),metadata=Object.fromEntries(config.fields.map(field=>[field.key,String(form.get(`meta_${field.key}`)||"")]));const payload={id:drawer?.record?.id,department:active,module:selectedModule.name,title:String(form.get("title")||""),description:String(form.get("description")||""),metadata,status:String(form.get("status")||"active"),priority:String(form.get("priority")||"medium"),dueDate:String(form.get("dueDate")||"")};try{const response=await fetch("/api/records",{method:isEdit?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});if(!response.ok)throw new Error();const data=await response.json();setRecords(prev=>isEdit?prev.map(r=>r.id===data.record.id?data.record:r):[data.record,...prev]);setDrawer(null);notify(isEdit?"Alterações salvas com sucesso":"Registro criado com sucesso")}catch{notify("Não foi possível salvar o registro")}}
-  const switchArea=(key:string)=>{setActive(key);setSelectedModule(null);setQuery("")};
-  return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark">Q</span><div><strong>Quimicativa</strong><small>Gestão integrada</small></div></div><nav aria-label="Navegação principal"><p className="nav-label">MENU PRINCIPAL</p>{Object.entries(departments).map(([key,item])=><button className={`nav-item ${active===key?"active":""}`} key={key} onClick={()=>switchArea(key)}><span>{item.code}</span>{item.name}</button>)}</nav><div className="sidebar-footer"><div className="support-icon">?</div><div><strong>Central de suporte</strong><small>Fale com nossa equipe</small></div></div></aside><main className="main"><header className="topbar"><div className="search"><span>⌕</span><input aria-label="Pesquisar" value={query} onChange={e=>setQuery(e.target.value)} placeholder={selectedModule?"Buscar nos registros...":"Buscar clientes, notas, pedidos..."}/><kbd>Ctrl K</kbd></div><div className="top-actions"><button className="icon-button" aria-label="Notificações" onClick={()=>notify("Você tem 7 notificações pendentes")}>•<span className="bell">◌</span></button><div className="user"><span className="avatar">RM</span><div><strong>Rafael Martins</strong><small>Administrador</small></div><span>⌄</span></div></div></header><div className="content"><section className="welcome"><div><p className="eyebrow">{selectedModule?`${current.name}  /  MÓDULO`:current.eyebrow}</p><h1>{selectedModule?selectedModule.name:active==="dashboard"?<>Bom dia, Rafael! <span>👋</span></>:current.name}</h1><p>{selectedModule?selectedModule.description:current.summary}</p></div>{selectedModule&&<button className="primary-button" onClick={()=>setDrawer({mode:"new",record:null})}><span>+</span> Novo registro</button>}</section>{active==="dashboard"?<ExecutiveView onOpen={switchArea}/>:selectedModule?<ModuleWorkspace module={selectedModule} records={records} loading={loading} query={query} onBack={()=>{setSelectedModule(null);setQuery("")}} onView={record=>setDrawer({mode:"view",record})} onEdit={record=>setDrawer({mode:"edit",record})}/>:<DepartmentView department={current} modules={filteredModules} query={query} onOpen={openModule}/>}</div></main>{drawer&&selectedModule&&<RecordDrawer state={drawer} module={selectedModule} onClose={()=>setDrawer(null)} onEdit={()=>setDrawer({mode:"edit",record:drawer.record})} onSubmit={saveRecord}/>} {toast&&<div className="toast" role="status"><span>✓</span>{toast}</div>}</div>;
+  const [active, setActive] = useState("dashboard"),
+    [query, setQuery] = useState(""),
+    [selectedModule, setSelectedModule] = useState<Module | null>(null),
+    [records, setRecords] = useState<RecordItem[]>([]),
+    [loading, setLoading] = useState(false),
+    [drawer, setDrawer] = useState<DrawerState | null>(null),
+    [toast, setToast] = useState("");
+  const [profile, setProfile] = useState({ name: "Usuário", role: "viewer" });
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((data) => {
+        if (mounted && data.name) setProfile(data);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  const current = departments[active];
+  const filteredModules = useMemo(
+    () =>
+      current.modules.filter((m) =>
+        `${m.name} ${m.description}`
+          .toLowerCase()
+          .includes(query.toLowerCase()),
+      ),
+    [current, query],
+  );
+  const notify = useCallback((message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(""), 2600);
+  }, []);
+  async function openModule(module: Module) {
+    setSelectedModule(module);
+    setQuery("");
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `/api/records?department=${encodeURIComponent(active)}&module=${encodeURIComponent(module.name)}`,
+      );
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setRecords(data.records);
+    } catch {
+      notify("Não foi possível carregar os registros");
+    } finally {
+      setLoading(false);
+    }
+  }
+  async function saveRecord(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!selectedModule) return;
+    const form = new FormData(e.currentTarget),
+      isEdit = drawer?.mode === "edit",
+      config = getModuleConfig(selectedModule.name),
+      metadata = Object.fromEntries(
+        config.fields.map((field) => [
+          field.key,
+          String(form.get(`meta_${field.key}`) || ""),
+        ]),
+      );
+    const payload = {
+      id: drawer?.record?.id,
+      department: active,
+      module: selectedModule.name,
+      title: String(form.get("title") || ""),
+      description: String(form.get("description") || ""),
+      metadata,
+      status: String(form.get("status") || "active"),
+      priority: String(form.get("priority") || "medium"),
+      dueDate: String(form.get("dueDate") || ""),
+    };
+    try {
+      const response = await fetch("/api/records", {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error();
+      const data = await response.json();
+      setRecords((prev) =>
+        isEdit
+          ? prev.map((r) => (r.id === data.record.id ? data.record : r))
+          : [data.record, ...prev],
+      );
+      setDrawer(null);
+      notify(
+        isEdit
+          ? "Alterações salvas com sucesso"
+          : "Registro criado com sucesso",
+      );
+    } catch {
+      notify("Não foi possível salvar o registro");
+    }
+  }
+  const switchArea = (key: string) => {
+    setActive(key);
+    setSelectedModule(null);
+    setQuery("");
+  };
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark">Q</span>
+          <div>
+            <strong>Quimicativa</strong>
+            <small>Gestão integrada</small>
+          </div>
+        </div>
+        <nav aria-label="Navegação principal">
+          <p className="nav-label">MENU PRINCIPAL</p>
+          {Object.entries(departments).map(([key, item]) => (
+            <button
+              className={`nav-item ${active === key ? "active" : ""}`}
+              key={key}
+              onClick={() => switchArea(key)}
+            >
+              <span>{item.code}</span>
+              {item.name}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-footer">
+          <div className="support-icon">?</div>
+          <div>
+            <strong>Central de suporte</strong>
+            <small>Fale com nossa equipe</small>
+          </div>
+        </div>
+      </aside>
+      <main className="main">
+        <header className="topbar">
+          <div className="search">
+            <span>⌕</span>
+            <input
+              aria-label="Pesquisar"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={
+                selectedModule
+                  ? "Buscar nos registros..."
+                  : "Buscar clientes, notas, pedidos..."
+              }
+            />
+            <kbd>Ctrl K</kbd>
+          </div>
+          <div className="top-actions">
+            <button
+              className="icon-button"
+              aria-label="Notificações"
+              onClick={() => notify("Você tem 7 notificações pendentes")}
+            >
+              •<span className="bell">◌</span>
+            </button>
+            <div className="user">
+              <span className="avatar">
+                {profile.name
+                  .split(" ")
+                  .map((name) => name[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase()}
+              </span>
+              <div>
+                <strong>{profile.name}</strong>
+                <small>
+                  {profile.role === "ceo"
+                    ? "Direção"
+                    : profile.role === "manager"
+                      ? "Gestor"
+                      : profile.role === "operator"
+                        ? "Operador"
+                        : "Consulta"}
+                </small>
+              </div>
+              <span>⌄</span>
+            </div>
+          </div>
+        </header>
+        <div className="content">
+          <section className="welcome">
+            <div>
+              <p className="eyebrow">
+                {selectedModule
+                  ? `${current.name}  /  MÓDULO`
+                  : current.eyebrow}
+              </p>
+              <h1>
+                {selectedModule ? (
+                  selectedModule.name
+                ) : active === "dashboard" ? (
+                  <>
+                    Bom dia, {profile.name.split(" ")[0]}! <span>👋</span>
+                  </>
+                ) : (
+                  current.name
+                )}
+              </h1>
+              <p>
+                {selectedModule ? selectedModule.description : current.summary}
+              </p>
+            </div>
+            {selectedModule && (
+              <button
+                className="primary-button"
+                onClick={() => setDrawer({ mode: "new", record: null })}
+              >
+                <span>+</span> Novo registro
+              </button>
+            )}
+          </section>
+          {active === "dashboard" ? (
+            <ExecutiveView onOpen={switchArea} />
+          ) : active === "digitalizacao" ? (
+            <DocumentCenter notify={notify} />
+          ) : selectedModule ? (
+            <ModuleWorkspace
+              module={selectedModule}
+              records={records}
+              loading={loading}
+              query={query}
+              onBack={() => {
+                setSelectedModule(null);
+                setQuery("");
+              }}
+              onView={(record) => setDrawer({ mode: "view", record })}
+              onEdit={(record) => setDrawer({ mode: "edit", record })}
+            />
+          ) : (
+            <DepartmentView
+              department={current}
+              modules={filteredModules}
+              query={query}
+              onOpen={openModule}
+            />
+          )}
+        </div>
+      </main>
+      {drawer && selectedModule && (
+        <RecordDrawer
+          state={drawer}
+          module={selectedModule}
+          department={active}
+          notify={notify}
+          onClose={() => setDrawer(null)}
+          onEdit={() => setDrawer({ mode: "edit", record: drawer.record })}
+          onSubmit={saveRecord}
+        />
+      )}{" "}
+      {toast && (
+        <div className="toast" role="status">
+          <span>✓</span>
+          {toast}
+        </div>
+      )}
+    </div>
+  );
 }
 
-function ExecutiveView({onOpen}:{onOpen:(key:string)=>void}){return <><section className="metrics" aria-label="Indicadores principais">{metrics.map(item=><article className="metric-card" key={item.label}><div className={`metric-icon ${item.tone}`}>{item.label.slice(0,2).toUpperCase()}</div><div className="metric-label">{item.label}<button aria-label="Mais opções">•••</button></div><strong>{item.value}</strong><small className={item.tone}>{item.note}</small></article>)}</section><section className="dashboard-grid"><FinancialPanel/><PendingPanel onOpen={onOpen}/></section><section className="panel recent-panel"><div className="panel-heading"><div><h2>Atividade recente</h2><p>Últimas movimentações entre todos os setores</p></div><button className="link-button">Ver relatório completo</button></div><div className="table-wrap"><table><thead><tr><th>Registro</th><th>Empresa / contato</th><th>Tipo</th><th>Valor / prazo</th><th>Status</th></tr></thead><tbody>{recent.map(row=><tr key={row[0]}>{row.map((cell,i)=><td key={cell}>{i===0?<strong>{cell}</strong>:i===4?<span className={`status s${row[4].length%4}`}>{cell}</span>:cell}</td>)}</tr>)}</tbody></table></div></section><section className="sector-shortcuts"><div className="section-title"><div><h2>Acesso rápido aos setores</h2><p>Visão consolidada de toda a empresa</p></div></div><div className="shortcut-grid">{Object.entries(departments).filter(([k])=>k!=="dashboard").map(([key,d])=><button key={key} onClick={()=>onOpen(key)}><span style={{background:d.color}}>{d.code}</span><div><strong>{d.name}</strong><small>{d.modules.length} módulos</small></div><b>›</b></button>)}</div></section></>}
-function FinancialPanel(){return <article className="panel chart-panel"><div className="panel-heading"><div><h2>Visão financeira</h2><p>Faturamento x despesas nos últimos 6 meses</p></div><button className="select-button">6 meses ⌄</button></div><div className="chart-legend"><span><i className="dot revenue"/>Faturamento</span><span><i className="dot expense"/>Despesas</span></div><div className="chart"><div className="y-axis"><span>500k</span><span>400k</span><span>300k</span><span>200k</span><span>100k</span><span>0</span></div><div className="plot"><div className="gridlines"/><div className="area expense-area"/><div className="area revenue-area"/><div className="chart-months"><span>Mar</span><span>Abr</span><span>Mai</span><span>Jun</span><span>Jul</span><span>Ago</span></div></div></div></article>}
-function PendingPanel({onOpen}:{onOpen:(k:string)=>void}){const items=[["!","Licença ambiental","Vence em 5 dias","Urgente","red","rh"],["NF","Notas fiscais pendentes","4 aguardando conferência","Financeiro","amber","financeiro"],["EPI","Entrega de EPI","3 funcionários sem assinatura","RH","blue","rh"],["CV","Currículos para revisar","12 novos candidatos","Recrutamento","violet","rh"]];return <article className="panel pending-panel"><div className="panel-heading"><div><h2>Pendências</h2><p>Itens que precisam da sua atenção</p></div><button className="link-button">Ver todas</button></div><ul className="pending-list">{items.map(i=><li key={i[1]} onClick={()=>onOpen(i[5])}><span className={`task-icon ${i[4]}`}>{i[0]}</span><div><strong>{i[1]}</strong><small>{i[2]}</small></div><em className={`tag ${i[4]}`}>{i[3]}</em></li>)}</ul></article>}
-function DepartmentView({department,modules,query,onOpen}:{department:Department;modules:Module[];query:string;onOpen:(m:Module)=>void}){return <><section className="department-summary"><article><span>Registros ativos</span><strong>{department.modules.reduce((a,m)=>a+parseInt(m.count.replace(/\D/g,"")||"0"),0).toLocaleString("pt-BR")}</strong><small>em {department.modules.length} módulos</small></article><article><span>Pendências</span><strong>{department.modules.filter(m=>m.alert).length}</strong><small>itens para acompanhar</small></article><article><span>Conformidade</span><strong>96%</strong><small>processos em dia</small></article></section><div className="section-title"><div><h2>Módulos de {department.name}</h2><p>Selecione uma área para consultar ou gerenciar registros.</p></div><button className="select-button">Mais recentes ⌄</button></div><section className="module-grid">{modules.length?modules.map((m,i)=><button className="module-card" key={m.name} onClick={()=>onOpen(m)}><div className="module-top"><span className="module-code" style={{background:`${department.color}18`,color:department.color}}>{String(i+1).padStart(2,"0")}</span>{m.alert&&<em>{m.alert}</em>}</div><h3>{m.name}</h3><p>{m.description}</p><footer><strong>{m.count}</strong><b>›</b></footer></button>):<div className="empty-state"><span>⌕</span><h3>Nenhum módulo encontrado</h3><p>Não encontramos resultados para &ldquo;{query}&rdquo;.</p></div>}</section></>}
-
-function ModuleWorkspace({module,records,loading,query,onBack,onView,onEdit}:{module:Module;records:RecordItem[];loading:boolean;query:string;onBack:()=>void;onView:(r:RecordItem)=>void;onEdit:(r:RecordItem)=>void}){
-  const config=getModuleConfig(module.name),columns=config.fields.slice(0,2),visible=records.filter(r=>`${r.title} ${r.description} ${Object.values(r.metadata??{}).join(" ")} ${r.status}`.toLowerCase().includes(query.toLowerCase())),statusLabel=Object.fromEntries(config.statuses.map(s=>[s.value,s.label]));
-  const attention=records.filter(r=>["pending","review","expired","overdue","critical","failed"].includes(r.status)).length,done=records.filter(r=>["completed","approved","active"].includes(r.status)).length;
-  return <><div className="workspace-toolbar"><button className="back-button" onClick={onBack}>‹ Voltar aos módulos</button><div><button className="select-button">Todos os status ⌄</button><button className="select-button">Prazo ⌄</button></div></div><div className="module-guidance"><span>FLUXO DO MÓDULO</span><p>{config.guidance}</p></div><section className="module-kpis"><article><span>{config.kpis[0]}</span><strong>{records.length}</strong></article><article><span>{config.kpis[1]}</span><strong>{attention}</strong></article><article><span>{config.kpis[2]}</span><strong>{done}</strong></article></section><section className="panel records-panel"><div className="panel-heading"><div><h2>{config.titleLabel}</h2><p>Consulte as informações operacionais e edite quando necessário.</p></div></div>{loading?<div className="records-loading"><i/><i/><i/></div>:visible.length?<div className="table-wrap"><table className="records-table"><thead><tr><th>{config.titleLabel}</th>{columns.map(field=><th key={field.key}>{field.label}</th>)}<th>Status</th><th>Prazo</th><th>Ações</th></tr></thead><tbody>{visible.map(record=><tr key={record.id}><td><strong>{record.title}</strong><small>{record.description}</small></td>{columns.map(field=><td key={field.key}><strong className="metadata-value">{formatField(record.metadata?.[field.key],field.type)}</strong></td>)}<td><span className={`record-status ${record.status}`}>{statusLabel[record.status]??record.status}</span></td><td>{record.dueDate?new Date(`${record.dueDate}T12:00:00`).toLocaleDateString("pt-BR"):"—"}</td><td><div className="row-actions"><button onClick={()=>onView(record)}>Consultar</button><button className="edit" onClick={()=>onEdit(record)}>Editar</button></div></td></tr>)}</tbody></table></div>:<div className="empty-state"><span>⌕</span><h3>Nenhum registro encontrado</h3><p>Ajuste sua busca ou crie o primeiro registro deste módulo.</p></div>}</section></>;
+function ExecutiveView({ onOpen }: { onOpen: (key: string) => void }) {
+  const [data, setData] = useState<{
+    metrics: {
+      records: number;
+      attention: number;
+      documents: number;
+      review: number;
+      expiring: number;
+    };
+    recent: Array<{
+      title: string;
+      department: string;
+      module: string;
+      status: string;
+      updated_at: number;
+    }>;
+  } | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/summary")
+      .then((r) => r.json())
+      .then((result) => {
+        if (mounted) setData(result);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  const cards = [
+    {
+      label: "Registros operacionais",
+      value: data?.metrics?.records ?? "—",
+      note: "dados cadastrados nos setores",
+      tone: "green",
+    },
+    {
+      label: "Acervo digital",
+      value: data?.metrics?.documents ?? "—",
+      note: `${data?.metrics?.review ?? 0} aguardando revisão`,
+      tone: "blue",
+    },
+    {
+      label: "Validades próximas",
+      value: data?.metrics?.expiring ?? "—",
+      note: "documentos nos próximos 30 dias",
+      tone: "amber",
+    },
+    {
+      label: "Pendências operacionais",
+      value: data?.metrics?.attention ?? "—",
+      note: "registros que exigem atenção",
+      tone: "red",
+    },
+  ];
+  return (
+    <>
+      <section className="metrics" aria-label="Indicadores principais">
+        {cards.map((item) => (
+          <article className="metric-card" key={item.label}>
+            <div className={`metric-icon ${item.tone}`}>
+              {item.label.slice(0, 2).toUpperCase()}
+            </div>
+            <div className="metric-label">{item.label}</div>
+            <strong>{item.value}</strong>
+            <small className={item.tone}>{item.note}</small>
+          </article>
+        ))}
+      </section>
+      <section className="dashboard-grid">
+        <article className="panel chart-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Migração documental</h2>
+              <p>Indicadores calculados diretamente do acervo privado</p>
+            </div>
+            <button
+              className="primary-button"
+              onClick={() => onOpen("digitalizacao")}
+            >
+              Abrir Acervo Digital
+            </button>
+          </div>
+          <div className="migration-callout">
+            <strong>{data?.metrics?.documents ?? 0}</strong>
+            <span>documentos recebidos</span>
+            <b>{data?.metrics?.review ?? 0} aguardam conferência humana</b>
+          </div>
+        </article>
+        <article className="panel pending-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Atenção da direção</h2>
+              <p>Pendências calculadas em tempo real</p>
+            </div>
+          </div>
+          <ul className="pending-list">
+            <li onClick={() => onOpen("digitalizacao")}>
+              <span className="task-icon amber">DOC</span>
+              <div>
+                <strong>Conferência documental</strong>
+                <small>
+                  {data?.metrics?.review ?? 0} documento(s) aguardando revisão
+                </small>
+              </div>
+            </li>
+            <li>
+              <span className="task-icon red">!</span>
+              <div>
+                <strong>Pendências operacionais</strong>
+                <small>
+                  {data?.metrics?.attention ?? 0} registro(s) requerem ação
+                </small>
+              </div>
+            </li>
+          </ul>
+        </article>
+      </section>
+      <section className="panel recent-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Atividade recente</h2>
+            <p>Últimos registros reais entre todos os setores</p>
+          </div>
+        </div>
+        {data?.recent?.length ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Registro</th>
+                  <th>Setor</th>
+                  <th>Módulo</th>
+                  <th>Status</th>
+                  <th>Atualização</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.recent.map((row) => (
+                  <tr key={`${row.title}-${row.updated_at}`}>
+                    <td>
+                      <strong>{row.title}</strong>
+                    </td>
+                    <td>
+                      {departments[row.department]?.name ?? row.department}
+                    </td>
+                    <td>{row.module}</td>
+                    <td>
+                      <span className="status">{row.status}</span>
+                    </td>
+                    <td>
+                      {new Date(row.updated_at * 1000).toLocaleString("pt-BR")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <h3>Nenhuma atividade real cadastrada</h3>
+            <p>
+              Os registros aparecerão aqui conforme a equipe migrar e operar os
+              módulos.
+            </p>
+          </div>
+        )}
+      </section>
+      <section className="sector-shortcuts">
+        <div className="section-title">
+          <div>
+            <h2>Acesso rápido aos setores</h2>
+            <p>Visão consolidada de toda a empresa</p>
+          </div>
+        </div>
+        <div className="shortcut-grid">
+          {Object.entries(departments)
+            .filter(([k]) => k !== "dashboard")
+            .map(([key, d]) => (
+              <button key={key} onClick={() => onOpen(key)}>
+                <span style={{ background: d.color }}>{d.code}</span>
+                <div>
+                  <strong>{d.name}</strong>
+                  <small>
+                    {d.modules.length
+                      ? `${d.modules.length} módulos`
+                      : "Central documental"}
+                  </small>
+                </div>
+                <b>›</b>
+              </button>
+            ))}
+        </div>
+      </section>
+    </>
+  );
+}
+function DepartmentView({
+  department,
+  modules,
+  query,
+  onOpen,
+}: {
+  department: Department;
+  modules: Module[];
+  query: string;
+  onOpen: (m: Module) => void;
+}) {
+  return (
+    <>
+      <section className="department-summary">
+        <article>
+          <span>Estrutura operacional</span>
+          <strong>{department.modules.length}</strong>
+          <small>módulos especializados</small>
+        </article>
+        <article>
+          <span>Fonte dos indicadores</span>
+          <strong>Real</strong>
+          <small>sem dados demonstrativos</small>
+        </article>
+        <article>
+          <span>Documentos</span>
+          <strong>Privados</strong>
+          <small>anexados a cada registro</small>
+        </article>
+      </section>
+      <div className="section-title">
+        <div>
+          <h2>Módulos de {department.name}</h2>
+          <p>Selecione uma área para consultar ou gerenciar registros.</p>
+        </div>
+        <button className="select-button">Mais recentes ⌄</button>
+      </div>
+      <section className="module-grid">
+        {modules.length ? (
+          modules.map((m, i) => (
+            <button
+              className="module-card"
+              key={m.name}
+              onClick={() => onOpen(m)}
+            >
+              <div className="module-top">
+                <span
+                  className="module-code"
+                  style={{
+                    background: `${department.color}18`,
+                    color: department.color,
+                  }}
+                >
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+              </div>
+              <h3>{m.name}</h3>
+              <p>{m.description}</p>
+              <footer>
+                <strong>Abrir módulo</strong>
+                <b>›</b>
+              </footer>
+            </button>
+          ))
+        ) : (
+          <div className="empty-state">
+            <span>⌕</span>
+            <h3>Nenhum módulo encontrado</h3>
+            <p>Não encontramos resultados para &ldquo;{query}&rdquo;.</p>
+          </div>
+        )}
+      </section>
+    </>
+  );
 }
 
-function RecordDrawer({state,module,onClose,onEdit,onSubmit}:{state:DrawerState;module:Module;onClose:()=>void;onEdit:()=>void;onSubmit:(e:React.FormEvent<HTMLFormElement>)=>void}){
-  const view=state.mode==="view",record=state.record,config=getModuleConfig(module.name),statusLabel=Object.fromEntries(config.statuses.map(s=>[s.value,s.label]));
-  return <div className="drawer-backdrop" onMouseDown={onClose}><aside className="record-drawer wide" onMouseDown={e=>e.stopPropagation()}><header><div><p className="eyebrow">{view?`CONSULTA DE ${config.singular.toUpperCase()}`:state.mode==="edit"?`EDIÇÃO DE ${config.singular.toUpperCase()}`:`NOVO ${config.singular.toUpperCase()}`}</p><h2>{view?record?.title:state.mode==="edit"?`Editar ${config.singular}`:`Novo ${config.singular}`}</h2></div><button onClick={onClose} aria-label="Fechar">×</button></header>{view?<div className="record-details"><div className="detail-hero"><span className={`record-status ${record?.status}`}>{statusLabel[record?.status??""]??record?.status}</span><p>{record?.description||"Sem observações cadastradas."}</p></div><dl className="custom-details">{config.fields.map(field=><div key={field.key}><dt>{field.label}</dt><dd>{formatField(record?.metadata?.[field.key],field.type)}</dd></div>)}<div><dt>Prioridade</dt><dd className={`priority ${record?.priority}`}>{record?.priority}</dd></div><div><dt>Prazo de acompanhamento</dt><dd>{record?.dueDate?new Date(`${record.dueDate}T12:00:00`).toLocaleDateString("pt-BR"):"Sem prazo"}</dd></div><div><dt>Última atualização</dt><dd>{record?new Date(record.updatedAt*1000).toLocaleString("pt-BR"):"—"}</dd></div></dl><footer><button className="secondary-button" onClick={onClose}>Fechar</button><button className="primary-button" onClick={onEdit}>Editar {config.singular}</button></footer></div>:<form className="drawer-form" onSubmit={onSubmit}><div className="form-section"><span>INFORMAÇÕES PRINCIPAIS</span><label>{config.titleLabel}<input name="title" required defaultValue={record?.title??""} placeholder={`Informe ${config.titleLabel.toLowerCase()}`} autoFocus/></label><label>{config.descriptionLabel}<textarea name="description" rows={3} defaultValue={record?.description??""} placeholder={config.guidance}/></label></div><div className="form-section"><span>DADOS DE {config.singular.toUpperCase()}</span><div className="dynamic-fields">{config.fields.map(field=><label key={field.key}>{field.label}{field.type==="select"?<select name={`meta_${field.key}`} defaultValue={record?.metadata?.[field.key]??""}><option value="">Selecione</option>{field.options?.map(option=><option key={option} value={option}>{option}</option>)}</select>:<input name={`meta_${field.key}`} type={field.type} step={field.type==="number"?"any":undefined} defaultValue={record?.metadata?.[field.key]??""} placeholder={field.placeholder}/>}</label>)}</div></div><div className="form-section"><span>ACOMPANHAMENTO</span><div className="form-row"><label>Status<select name="status" defaultValue={record?.status??config.statuses[0].value}>{config.statuses.map(option=><option value={option.value} key={option.value}>{option.label}</option>)}</select></label><label>Prioridade<select name="priority" defaultValue={record?.priority??"medium"}><option value="low">Baixa</option><option value="medium">Média</option><option value="high">Alta</option><option value="critical">Crítica</option></select></label></div><label>Prazo de acompanhamento<input name="dueDate" type="date" defaultValue={record?.dueDate??""}/></label></div><div className="drawer-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button">Salvar {config.singular}</button></div></form>}</aside></div>;
+function ModuleWorkspace({
+  module,
+  records,
+  loading,
+  query,
+  onBack,
+  onView,
+  onEdit,
+}: {
+  module: Module;
+  records: RecordItem[];
+  loading: boolean;
+  query: string;
+  onBack: () => void;
+  onView: (r: RecordItem) => void;
+  onEdit: (r: RecordItem) => void;
+}) {
+  const config = getModuleConfig(module.name),
+    columns = config.fields.slice(0, 2),
+    visible = records.filter((r) =>
+      `${r.title} ${r.description} ${Object.values(r.metadata ?? {}).join(" ")} ${r.status}`
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    ),
+    statusLabel = Object.fromEntries(
+      config.statuses.map((s) => [s.value, s.label]),
+    );
+  const attention = records.filter((r) =>
+      [
+        "pending",
+        "review",
+        "expired",
+        "overdue",
+        "critical",
+        "failed",
+      ].includes(r.status),
+    ).length,
+    done = records.filter((r) =>
+      ["completed", "approved", "active"].includes(r.status),
+    ).length;
+  return (
+    <>
+      <div className="workspace-toolbar">
+        <button className="back-button" onClick={onBack}>
+          ‹ Voltar aos módulos
+        </button>
+        <div>
+          <button className="select-button">Todos os status ⌄</button>
+          <button className="select-button">Prazo ⌄</button>
+        </div>
+      </div>
+      <div className="module-guidance">
+        <span>FLUXO DO MÓDULO</span>
+        <p>{config.guidance}</p>
+      </div>
+      <section className="module-kpis">
+        <article>
+          <span>{config.kpis[0]}</span>
+          <strong>{records.length}</strong>
+        </article>
+        <article>
+          <span>{config.kpis[1]}</span>
+          <strong>{attention}</strong>
+        </article>
+        <article>
+          <span>{config.kpis[2]}</span>
+          <strong>{done}</strong>
+        </article>
+      </section>
+      <section className="panel records-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>{config.titleLabel}</h2>
+            <p>
+              Consulte as informações operacionais e edite quando necessário.
+            </p>
+          </div>
+        </div>
+        {loading ? (
+          <div className="records-loading">
+            <i />
+            <i />
+            <i />
+          </div>
+        ) : visible.length ? (
+          <div className="table-wrap">
+            <table className="records-table">
+              <thead>
+                <tr>
+                  <th>{config.titleLabel}</th>
+                  {columns.map((field) => (
+                    <th key={field.key}>{field.label}</th>
+                  ))}
+                  <th>Status</th>
+                  <th>Prazo</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((record) => (
+                  <tr key={record.id}>
+                    <td>
+                      <strong>{record.title}</strong>
+                      <small>{record.description}</small>
+                    </td>
+                    {columns.map((field) => (
+                      <td key={field.key}>
+                        <strong className="metadata-value">
+                          {formatField(
+                            record.metadata?.[field.key],
+                            field.type,
+                          )}
+                        </strong>
+                      </td>
+                    ))}
+                    <td>
+                      <span className={`record-status ${record.status}`}>
+                        {statusLabel[record.status] ?? record.status}
+                      </span>
+                    </td>
+                    <td>
+                      {record.dueDate
+                        ? new Date(
+                            `${record.dueDate}T12:00:00`,
+                          ).toLocaleDateString("pt-BR")
+                        : "—"}
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        <button onClick={() => onView(record)}>
+                          Consultar
+                        </button>
+                        <button className="edit" onClick={() => onEdit(record)}>
+                          Editar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <span>⌕</span>
+            <h3>Nenhum registro encontrado</h3>
+            <p>Ajuste sua busca ou crie o primeiro registro deste módulo.</p>
+          </div>
+        )}
+      </section>
+    </>
+  );
 }
 
-function formatField(value:string|undefined,type:string){if(!value)return "—";if(type==="date")return new Date(`${value}T12:00:00`).toLocaleDateString("pt-BR");if(type==="number")return Number(value).toLocaleString("pt-BR");return value;}
+function RecordDrawer({
+  state,
+  module,
+  department,
+  notify,
+  onClose,
+  onEdit,
+  onSubmit,
+}: {
+  state: DrawerState;
+  module: Module;
+  department: string;
+  notify: (message: string) => void;
+  onClose: () => void;
+  onEdit: () => void;
+  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const view = state.mode === "view",
+    record = state.record,
+    config = getModuleConfig(module.name),
+    statusLabel = Object.fromEntries(
+      config.statuses.map((s) => [s.value, s.label]),
+    );
+  return (
+    <div className="drawer-backdrop" onMouseDown={onClose}>
+      <aside
+        className="record-drawer wide"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <header>
+          <div>
+            <p className="eyebrow">
+              {view
+                ? `CONSULTA DE ${config.singular.toUpperCase()}`
+                : state.mode === "edit"
+                  ? `EDIÇÃO DE ${config.singular.toUpperCase()}`
+                  : `NOVO ${config.singular.toUpperCase()}`}
+            </p>
+            <h2>
+              {view
+                ? record?.title
+                : state.mode === "edit"
+                  ? `Editar ${config.singular}`
+                  : `Novo ${config.singular}`}
+            </h2>
+          </div>
+          <button onClick={onClose} aria-label="Fechar">
+            ×
+          </button>
+        </header>
+        {view ? (
+          <div className="record-details">
+            <div className="detail-hero">
+              <span className={`record-status ${record?.status}`}>
+                {statusLabel[record?.status ?? ""] ?? record?.status}
+              </span>
+              <p>{record?.description || "Sem observações cadastradas."}</p>
+            </div>
+            <dl className="custom-details">
+              {config.fields.map((field) => (
+                <div key={field.key}>
+                  <dt>{field.label}</dt>
+                  <dd>
+                    {formatField(record?.metadata?.[field.key], field.type)}
+                  </dd>
+                </div>
+              ))}
+              <div>
+                <dt>Prioridade</dt>
+                <dd className={`priority ${record?.priority}`}>
+                  {record?.priority}
+                </dd>
+              </div>
+              <div>
+                <dt>Prazo de acompanhamento</dt>
+                <dd>
+                  {record?.dueDate
+                    ? new Date(`${record.dueDate}T12:00:00`).toLocaleDateString(
+                        "pt-BR",
+                      )
+                    : "Sem prazo"}
+                </dd>
+              </div>
+              <div>
+                <dt>Última atualização</dt>
+                <dd>
+                  {record
+                    ? new Date(record.updatedAt * 1000).toLocaleString("pt-BR")
+                    : "—"}
+                </dd>
+              </div>
+            </dl>
+            {record && (
+              <RecordDocuments
+                recordId={record.id}
+                department={department}
+                module={module.name}
+                notify={notify}
+              />
+            )}
+            <footer>
+              <button className="secondary-button" onClick={onClose}>
+                Fechar
+              </button>
+              <button className="primary-button" onClick={onEdit}>
+                Editar {config.singular}
+              </button>
+            </footer>
+          </div>
+        ) : (
+          <form className="drawer-form" onSubmit={onSubmit}>
+            <div className="form-section">
+              <span>INFORMAÇÕES PRINCIPAIS</span>
+              <label>
+                {config.titleLabel}
+                <input
+                  name="title"
+                  required
+                  defaultValue={record?.title ?? ""}
+                  placeholder={`Informe ${config.titleLabel.toLowerCase()}`}
+                  autoFocus
+                />
+              </label>
+              <label>
+                {config.descriptionLabel}
+                <textarea
+                  name="description"
+                  rows={3}
+                  defaultValue={record?.description ?? ""}
+                  placeholder={config.guidance}
+                />
+              </label>
+            </div>
+            <div className="form-section">
+              <span>DADOS DE {config.singular.toUpperCase()}</span>
+              <div className="dynamic-fields">
+                {config.fields.map((field) => (
+                  <label key={field.key}>
+                    {field.label}
+                    {field.type === "select" ? (
+                      <select
+                        required={field.required}
+                        name={`meta_${field.key}`}
+                        defaultValue={record?.metadata?.[field.key] ?? ""}
+                      >
+                        <option value="">Selecione</option>
+                        {field.options?.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        required={field.required}
+                        name={`meta_${field.key}`}
+                        type={field.type}
+                        step={field.type === "number" ? "any" : undefined}
+                        defaultValue={record?.metadata?.[field.key] ?? ""}
+                        placeholder={field.placeholder}
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="form-section">
+              <span>ACOMPANHAMENTO</span>
+              <div className="form-row">
+                <label>
+                  Status
+                  <select
+                    name="status"
+                    defaultValue={record?.status ?? config.statuses[0].value}
+                  >
+                    {config.statuses.map((option) => (
+                      <option value={option.value} key={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Prioridade
+                  <select
+                    name="priority"
+                    defaultValue={record?.priority ?? "medium"}
+                  >
+                    <option value="low">Baixa</option>
+                    <option value="medium">Média</option>
+                    <option value="high">Alta</option>
+                    <option value="critical">Crítica</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Prazo de acompanhamento
+                <input
+                  name="dueDate"
+                  type="date"
+                  defaultValue={record?.dueDate ?? ""}
+                />
+              </label>
+            </div>
+            <div className="drawer-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={onClose}
+              >
+                Cancelar
+              </button>
+              <button className="primary-button">
+                Salvar {config.singular}
+              </button>
+            </div>
+          </form>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function formatField(value: string | undefined, type: string) {
+  if (!value) return "—";
+  if (type === "date")
+    return new Date(`${value}T12:00:00`).toLocaleDateString("pt-BR");
+  if (type === "number") return Number(value).toLocaleString("pt-BR");
+  return value;
+}

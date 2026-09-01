@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -24,6 +24,24 @@ export const records = sqliteTable("records", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 }, table => [index("idx_records_department_module").on(table.department, table.module), index("idx_records_status_due_date").on(table.status, table.dueDate)]);
 
+export const intakeBatches = sqliteTable("intake_batches", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  code: text("code").notNull().unique(),
+  department: text("department").notNull(),
+  module: text("module").notNull(),
+  responsible: text("responsible").notNull(),
+  physicalLocation: text("physical_location").notNull(),
+  expectedDocuments: integer("expected_documents").notNull().default(1),
+  expectedPages: integer("expected_pages").notNull().default(1),
+  receivedDocuments: integer("received_documents").notNull().default(0),
+  receivedPages: integer("received_pages").notNull().default(0),
+  divergences: text("divergences").notNull().default(""),
+  status: text("status").notNull().default("open"),
+  createdBy: text("created_by").notNull().references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_batches_department_status").on(table.department, table.status)]);
+
 export const files = sqliteTable("files", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   recordId: integer("record_id").notNull().references(() => records.id),
@@ -31,9 +49,27 @@ export const files = sqliteTable("files", {
   filename: text("filename").notNull(),
   contentType: text("content_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
+  department: text("department").notNull().default("inbox"),
+  module: text("module").notNull().default("Caixa de entrada"),
+  documentType: text("document_type").notNull().default("Documento geral"),
+  referenceDate: integer("reference_date", { mode: "timestamp" }),
+  expiresAt: integer("expires_at", { mode: "timestamp" }),
+  notes: text("notes"),
+  status: text("status").notNull().default("review"),
+  checksum: text("checksum"),
+  batchCode: text("batch_code"),
+  physicalLocation: text("physical_location"),
+  confidentiality: text("confidentiality").notNull().default("internal"),
+  pageCount: integer("page_count").notNull().default(1),
+  version: integer("version").notNull().default(1),
+  validationChecklist: text("validation_checklist").notNull().default("{}"),
+  reviewedBy: text("reviewed_by").references(() => users.id),
+  reviewedAt: integer("reviewed_at", { mode: "timestamp" }),
+  rejectionReason: text("rejection_reason"),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   uploadedBy: text("uploaded_by").references(() => users.id),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-}, table => [index("idx_files_record_id").on(table.recordId)]);
+}, table => [index("idx_files_record_id").on(table.recordId), index("idx_files_department_module").on(table.department, table.module), index("idx_files_status_expires_at").on(table.status, table.expiresAt), uniqueIndex("uidx_files_checksum").on(table.checksum)]);
 
 export const auditLog = sqliteTable("audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
