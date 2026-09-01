@@ -38,4 +38,6 @@
 .report-icon.red{background:#fee9e8;color:#cf4f4f}
 .report-icon.green{background:#e6f5ef;color:#178869}
 .report-card .primary-button{margin-top:auto}
+.report-ficha{display:flex;gap:8px;margin-top:auto}
+.report-ficha select{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:10px}
 @media(max-width:720px){.product-stats{grid-template-columns:1fr 1fr}.cert-row{flex-direction:column}}

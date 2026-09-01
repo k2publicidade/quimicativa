@@ -250,6 +250,7 @@ export default function Dashboard() {
     [drawer, setDrawer] = useState<DrawerState | null>(null),
     [toast, setToast] = useState("");
   const [profile, setProfile] = useState({ name: "Usuário", role: "viewer" });
+  const [attentionTotal, setAttentionTotal] = useState<number | null>(null);
   useEffect(() => {
     let mounted = true;
     fetch("/api/profile")
@@ -257,6 +258,22 @@ export default function Dashboard() {
       .then((data) => {
         if (mounted && data.name) setProfile(data);
       });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/summary")
+      .then((r) => r.json())
+      .then((data) => {
+        if (mounted)
+          setAttentionTotal(
+            (data?.compliance?.totalAlerts ?? 0) +
+              (data?.metrics?.review ?? 0),
+          );
+      })
+      .catch(() => {});
     return () => {
       mounted = false;
     };
@@ -388,15 +405,25 @@ export default function Dashboard() {
                   : "Buscar clientes, notas, pedidos..."
               }
             />
-            <kbd>Ctrl K</kbd>
           </div>
           <div className="top-actions">
             <button
               className="icon-button"
-              aria-label="Notificações"
-              onClick={() => notify("Você tem 7 notificações pendentes")}
+              aria-label="Pendências"
+              title="Ver pendências"
+              onClick={() => {
+                switchArea("dashboard");
+                notify(
+                  attentionTotal
+                    ? `${attentionTotal} pendência(s) precisam da sua atenção hoje`
+                    : "Nenhuma pendência no momento",
+                );
+              }}
             >
-              •<span className="bell">◌</span>
+              <span className="bell">
+                ◌
+                {attentionTotal ? <b>{attentionTotal}</b> : null}
+              </span>
             </button>
             <div className="user">
               <span className="avatar">
@@ -460,7 +487,7 @@ export default function Dashboard() {
           ) : active === "digitalizacao" ? (
             <DocumentCenter notify={notify} />
           ) : active === "produtos" ? (
-            <ProductCenter notify={notify} />
+            <ProductCenter notify={notify} canExport={profile.role !== "viewer"} />
           ) : selectedModule ? (
             <ModuleWorkspace
               module={selectedModule}
@@ -612,7 +639,17 @@ function ExecutiveView({ onOpen }: { onOpen: (key: string) => void }) {
             </div>
           </div>
           <ul className="pending-list">
-            <li onClick={() => onOpen("digitalizacao")}>
+            <li
+              onClick={() => onOpen("digitalizacao")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpen("digitalizacao");
+                }
+              }}
+            >
               <span className="task-icon amber">DOC</span>
               <div>
                 <strong>Conferência documental</strong>
@@ -621,7 +658,17 @@ function ExecutiveView({ onOpen }: { onOpen: (key: string) => void }) {
                 </small>
               </div>
             </li>
-            <li onClick={() => onOpen("produtos")}>
+            <li
+              onClick={() => onOpen("produtos")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpen("produtos");
+                }
+              }}
+            >
               <span className="task-icon red">FQ</span>
               <div>
                 <strong>Conformidade regulatória</strong>
@@ -757,7 +804,6 @@ function DepartmentView({
           <h2>Módulos de {department.name}</h2>
           <p>Selecione uma área para consultar ou gerenciar registros.</p>
         </div>
-        <button className="select-button">Mais recentes ⌄</button>
       </div>
       <section className="module-grid">
         {modules.length ? (
@@ -816,11 +862,20 @@ function ModuleWorkspace({
   onEdit: (r: RecordItem) => void;
 }) {
   const config = getModuleConfig(module.name),
-    columns = config.fields.slice(0, 2),
-    visible = records.filter((r) =>
+    columns = config.fields.slice(0, 2);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<"recent" | "due">("recent");
+  const visible = records
+    .filter((r) => statusFilter === "all" || r.status === statusFilter)
+    .filter((r) =>
       `${r.title} ${r.description} ${Object.values(r.metadata ?? {}).join(" ")} ${r.status}`
         .toLowerCase()
         .includes(query.toLowerCase()),
+    )
+    .sort((a, b) =>
+      sortBy === "due"
+        ? (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99")
+        : b.updatedAt - a.updatedAt,
     ),
     statusLabel = Object.fromEntries(
       config.statuses.map((s) => [s.value, s.label]),
@@ -845,8 +900,25 @@ function ModuleWorkspace({
           ‹ Voltar aos módulos
         </button>
         <div>
-          <button className="select-button">Todos os status ⌄</button>
-          <button className="select-button">Prazo ⌄</button>
+          <select
+            className="select-button"
+            aria-label="Filtrar por status"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="all">Todos os status</option>
+            {config.statuses.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <button
+            className="select-button"
+            onClick={() => setSortBy(sortBy === "recent" ? "due" : "recent")}
+          >
+            {sortBy === "recent" ? "Mais recentes ⌄" : "Por prazo ⌄"}
+          </button>
         </div>
       </div>
       <div className="module-guidance">
@@ -975,10 +1047,20 @@ function RecordDrawer({
     statusLabel = Object.fromEntries(
       config.statuses.map((s) => [s.value, s.label]),
     );
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div className="drawer-backdrop" onMouseDown={onClose}>
       <aside
         className="record-drawer wide"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${view ? "Consulta" : state.mode === "edit" ? "Edição" : "Novo"} de ${config.singular}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header>

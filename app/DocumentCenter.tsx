@@ -169,6 +169,17 @@ export default function DocumentCenter({
           (value): value is File => value instanceof File && value.size > 0,
         );
     if (!files.length) return;
+    // Gera identificação do lote uma única vez para agrupar os arquivos
+    const generatedCode = `LOTE-${new Date()
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, "")}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      batchCode = String(source.get("batchCode") || "").trim() || generatedCode,
+      physicalLocation =
+        String(source.get("physicalLocation") || "").trim() || "A definir",
+      responsible = String(source.get("responsible") || "").trim();
+    const errors: string[] = [];
+    let sent = 0;
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -178,35 +189,39 @@ export default function DocumentCenter({
           if (key !== "file") form.append(key, value);
         form.set("department", department);
         form.set("module", module);
+        form.set("batchCode", batchCode);
+        form.set("physicalLocation", physicalLocation);
+        if (responsible) form.set("responsible", responsible);
         form.set("file", file);
         if (file.type.startsWith("image/")) {
-          setUploading(`Lendo o texto de ${file.name} (OCR)...`);
+          setUploading(`Lendo o texto de ${file.name} — pode levar alguns segundos...`);
           try {
             const { default: Tesseract } = await import("tesseract.js");
             const { data } = await Tesseract.recognize(file, "por");
             const text = (data.text || "").trim();
             if (text) form.set("ocrText", text.slice(0, 200000));
           } catch {
-            // OCR falhou — o documento segue sem texto extraído
+            // Leitura falhou — o documento segue sem texto extraído
           }
           setUploading(`${i + 1} de ${files.length} — ${file.name}`);
         }
         const r = await fetch("/api/documents", { method: "POST", body: form }),
           data = await r.json();
-        if (!r.ok) throw new Error(data.error || `Falha em ${file.name}`);
+        if (r.ok) sent += 1;
+        else errors.push(`${file.name}: ${data.error || "não foi possível enviar"}`);
       }
-      notify(`${files.length} documento(s) enviado(s) para revisão`);
-      formElement.reset();
-      await load();
-    } catch (error) {
-      notify(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível enviar os documentos",
-      );
-    } finally {
-      setUploading("");
+    } catch {
+      errors.push("Falha de conexão ao enviar os arquivos");
     }
+    if (errors.length) {
+      notify(
+        `${sent} enviado(s) · ${errors.length} com problema: ${errors.slice(0, 3).join(" | ")}${errors.length > 3 ? "…" : ""}`,
+      );
+    } else {
+      notify(`${sent} documento(s) enviado(s) para revisão`);
+    }
+    formElement.reset();
+    await load();
   };
   const updateStatus = async (doc: DocumentItem, status: string) => {
     let validationChecklist: Record<string, boolean> | undefined,
@@ -422,48 +437,6 @@ export default function DocumentCenter({
               </select>
             </label>
             <label>
-              Código do lote / caixa
-              <input
-                name="batchCode"
-                required
-                placeholder="Ex.: CX-RH-2026-004"
-              />
-            </label>
-            <label>
-              Responsável pelo lote
-              <input
-                name="responsible"
-                required
-                placeholder="Nome do custodiante"
-              />
-            </label>
-            <label>
-              Documentos previstos
-              <input
-                name="expectedDocuments"
-                type="number"
-                min="1"
-                defaultValue="1"
-              />
-            </label>
-            <label>
-              Páginas previstas
-              <input
-                name="expectedPages"
-                type="number"
-                min="1"
-                defaultValue="1"
-              />
-            </label>
-            <label>
-              Localização do original
-              <input
-                name="physicalLocation"
-                required
-                placeholder="Arquivo A · Estante 2 · Caixa 4"
-              />
-            </label>
-            <label>
               Nível de acesso
               <select name="confidentiality" defaultValue="internal">
                 <option value="internal">Interno</option>
@@ -471,24 +444,70 @@ export default function DocumentCenter({
                 <option value="confidential">Confidencial / direção</option>
               </select>
             </label>
-            <label>
-              Data do documento
-              <input name="referenceDate" type="date" />
-            </label>
-            <label>
-              Validade, se houver
-              <input name="expiresAt" type="date" />
-            </label>
-            <label>
-              Número de páginas
-              <input
-                name="pageCount"
-                type="number"
-                min="1"
-                max="5000"
-                defaultValue="1"
-              />
-            </label>
+          </div>
+          <details className="scan-details">
+            <summary>Detalhes do arquivo físico (opcional)</summary>
+            <div className="scan-fields">
+              <label>
+                Código do lote / caixa
+                <input
+                  name="batchCode"
+                  placeholder="Ex.: CX-RH-2026-004 (se vazio, geramos um)"
+                />
+              </label>
+              <label>
+                Responsável pelo lote
+                <input
+                  name="responsible"
+                  placeholder="Nome do custodiante"
+                />
+              </label>
+              <label>
+                Documentos previstos
+                <input
+                  name="expectedDocuments"
+                  type="number"
+                  min="1"
+                  defaultValue="1"
+                />
+              </label>
+              <label>
+                Páginas previstas
+                <input
+                  name="expectedPages"
+                  type="number"
+                  min="1"
+                  defaultValue="1"
+                />
+              </label>
+              <label>
+                Localização do original
+                <input
+                  name="physicalLocation"
+                  placeholder="Arquivo A · Estante 2 · Caixa 4"
+                />
+              </label>
+              <label>
+                Data do documento
+                <input name="referenceDate" type="date" />
+              </label>
+              <label>
+                Validade, se houver
+                <input name="expiresAt" type="date" />
+              </label>
+              <label>
+                Número de páginas
+                <input
+                  name="pageCount"
+                  type="number"
+                  min="1"
+                  max="5000"
+                  defaultValue="1"
+                />
+              </label>
+            </div>
+          </details>
+          <div className="scan-fields">
             <label className="full">
               Observações de custódia
               <textarea
@@ -819,7 +838,7 @@ export default function DocumentCenter({
                 <textarea name="notes" rows={3} defaultValue={editing.notes} />
               </label>
               <label className="full">
-                Texto extraído (OCR) — usado na busca
+                Texto lido da imagem — usado na busca
                 <textarea
                   name="ocrText"
                   rows={5}

@@ -345,6 +345,11 @@ export async function GET(request: NextRequest) {
       { x: 48, y: y - 14, size: 9, font: bold, color: INK },
     );
   } else if (type === "ficha" && Number.isInteger(productId) && productId > 0) {
+    if (!canValidate(actor))
+      return NextResponse.json(
+        { error: "Ficha de produto restrita à direção e gestores" },
+        { status: 403 },
+      );
     title = "Ficha consolidada do produto";
     ({ page, font, bold, width, y } = await pdfHeader(
       doc,
@@ -486,7 +491,10 @@ export async function GET(request: NextRequest) {
       });
   } else {
     return NextResponse.json(
-      { error: "Relatório não reconhecido. Use type=estoque, type=controlados ou type=ficha&productId=N" },
+      {
+        error:
+          "Não foi possível gerar o relatório solicitado. Escolha o relatório pela tela de Relatórios.",
+      },
       { status: 400 },
     );
   }

@@ -113,6 +113,17 @@ export async function POST(request: NextRequest) {
       { error: "Informe o produto e o número do lote" },
       { status: 400 },
     );
+  if (quantity > 0 && !expiryDate)
+    return NextResponse.json(
+      { error: "Lote com quantidade exige a data de validade" },
+      { status: 400 },
+    );
+  const manufactureDate = dateToEpoch(body.manufactureDate);
+  if (expiryDate && manufactureDate && expiryDate < manufactureDate)
+    return NextResponse.json(
+      { error: "A validade não pode ser anterior à fabricação" },
+      { status: 400 },
+    );
   if (expiryDate && expiryDate < now - 2 * 86400)
     return NextResponse.json(
       { error: "A validade informada já passou. Confira a data." },
@@ -144,7 +155,7 @@ export async function POST(request: NextRequest) {
     .bind(
       productId,
       lotNumber,
-      dateToEpoch(body.manufactureDate),
+      manufactureDate,
       expiryDate,
       quantity,
       unit,
@@ -194,9 +205,24 @@ export async function PUT(request: NextRequest) {
     .first<LotRow>();
   if (!current)
     return NextResponse.json({ error: "Lote não encontrado" }, { status: 404 });
-  const quantity = Math.max(0, Number(body.quantity) ?? current.quantity),
+  const quantityRaw = Number(body.quantity),
+    quantity = Number.isFinite(quantityRaw)
+      ? Math.max(0, quantityRaw)
+      : current.quantity,
     expiryDate = dateToEpoch(body.expiryDate) ?? current.expiry_date,
+    manufactureDate =
+      dateToEpoch(body.manufactureDate) ?? current.manufacture_date,
     now = Math.floor(Date.now() / 1000);
+  if (quantity > 0 && !expiryDate)
+    return NextResponse.json(
+      { error: "Lote com quantidade exige a data de validade" },
+      { status: 400 },
+    );
+  if (expiryDate && manufactureDate && expiryDate < manufactureDate)
+    return NextResponse.json(
+      { error: "A validade não pode ser anterior à fabricação" },
+      { status: 400 },
+    );
   if (expiryDate && expiryDate < now - 2 * 86400)
     return NextResponse.json(
       { error: "A validade informada já passou. Confira a data." },
@@ -207,7 +233,7 @@ export async function PUT(request: NextRequest) {
       "UPDATE lots SET manufacture_date=?,expiry_date=?,quantity=?,unit=?,location=?,notes=?,updated_at=? WHERE id=? RETURNING *",
     )
     .bind(
-      dateToEpoch(body.manufactureDate) ?? current.manufacture_date,
+      manufactureDate,
       expiryDate,
       quantity,
       String(body.unit || current.unit),

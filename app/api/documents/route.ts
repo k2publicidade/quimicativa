@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { PDFDocument } from "pdf-lib";
 import { getD1, getFiles } from "../../../db";
 import { canReadConfidential, canValidate, canWrite, getActor } from "../authz";
 
@@ -181,21 +182,21 @@ export async function GET(request: NextRequest) {
     now = Math.floor(Date.now() / 1000),
     thirtyDays = now + 30 * 86400,
     stats = await db
-      .prepare(
-        "SELECT COUNT(*) total,SUM(CASE WHEN status='review' THEN 1 ELSE 0 END) to_review,SUM(CASE WHEN expires_at BETWEEN ? AND ? THEN 1 ELSE 0 END) expiring,SUM(CASE WHEN status IN ('indexed','validated','archived') THEN 1 ELSE 0 END) indexed FROM files",
-      )
-      .bind(now, thirtyDays)
-      .first<{
-        total: number;
-        to_review: number;
-        expiring: number;
-        indexed: number;
-      }>(),
-    departmentStats = await db
-      .prepare(
-        "SELECT department,COUNT(*) total FROM files GROUP BY department",
-      )
-      .all<{ department: string; total: number }>(),
+        .prepare(
+          `SELECT COUNT(*) total,SUM(CASE WHEN status='review' THEN 1 ELSE 0 END) to_review,SUM(CASE WHEN expires_at BETWEEN ? AND ? THEN 1 ELSE 0 END) expiring,SUM(CASE WHEN status IN ('indexed','validated','archived') THEN 1 ELSE 0 END) count_indexed FROM files${canReadConfidential(user) ? "" : " WHERE confidentiality='internal'"}`,
+        )
+        .bind(now, thirtyDays)
+        .first<{
+          total: number;
+          to_review: number;
+          expiring: number;
+          count_indexed: number;
+        }>(),
+      departmentStats = await db
+        .prepare(
+          `SELECT department,COUNT(*) total FROM files${canReadConfidential(user) ? "" : " WHERE confidentiality='internal'"} GROUP BY department`,
+        )
+        .all<{ department: string; total: number }>(),
     batches = await db
       .prepare("SELECT * FROM intake_batches ORDER BY updated_at DESC LIMIT 30")
       .all<Record<string, unknown>>();
@@ -209,7 +210,7 @@ export async function GET(request: NextRequest) {
       total: stats?.total ?? 0,
       toReview: stats?.to_review ?? 0,
       expiring: stats?.expiring ?? 0,
-      indexed: stats?.indexed ?? 0,
+      indexed: stats?.count_indexed ?? 0,
       byDepartment,
     },
   });
@@ -283,6 +284,32 @@ export async function POST(request: NextRequest) {
       { error: "O conteúdo do arquivo não corresponde ao formato informado." },
       { status: 415 },
     );
+  let realPageCount = pageCount;
+  if (file.type === "application/pdf") {
+    const tail = new TextDecoder()
+      .decode(bytes.slice(-2048))
+      .replace(/\s+$/, "");
+    if (!tail.includes("%%EOF"))
+      return NextResponse.json(
+        {
+          error:
+            "O PDF parece estar incompleto ou corrompido. Envie o arquivo original novamente.",
+        },
+        { status: 415 },
+      );
+    try {
+      const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+      realPageCount = pdf.getPageCount();
+    } catch {
+      return NextResponse.json(
+        {
+          error:
+            "Não foi possível ler o conteúdo deste PDF. Confira se o arquivo não está corrompido.",
+        },
+        { status: 415 },
+      );
+    }
+  }
   const digest = await crypto.subtle.digest("SHA-256", bytes),
     checksum = Array.from(new Uint8Array(digest))
       .map((b) => b.toString(16).padStart(2, "0"))
@@ -401,14 +428,14 @@ export async function POST(request: NextRequest) {
         batchCode,
         physicalLocation,
         confidentiality,
-        pageCount,
+        realPageCount,
         ocrText,
         now,
         user.userId,
         now,
       )
       .first<FileRow>();
-  } catch {
+  } catch (error) {
     await getFiles().delete(key);
     if (createdRecord)
       await db.prepare("DELETE FROM records WHERE id=?").bind(recordId).run();
@@ -419,6 +446,21 @@ export async function POST(request: NextRequest) {
         )
         .bind(batchCode)
         .run();
+    const message = String(error);
+    if (message.includes("UNIQUE") && message.includes("checksum")) {
+      const duplicate = await db
+        .prepare("SELECT id,filename FROM files WHERE checksum=? LIMIT 1")
+        .bind(checksum)
+        .first<{ id: number; filename: string }>();
+      if (duplicate)
+        return NextResponse.json(
+          {
+            error: `Este arquivo já foi digitalizado como “${duplicate.filename}”.`,
+            duplicateId: duplicate.id,
+          },
+          { status: 409 },
+        );
+    }
     return NextResponse.json(
       {
         error:
@@ -465,7 +507,7 @@ export async function POST(request: NextRequest) {
       .prepare(
         "UPDATE intake_batches SET received_documents=received_documents+1,received_pages=received_pages+?,divergences=CASE WHEN received_documents+1>expected_documents OR received_pages+?>expected_pages THEN 'Quantidade recebida acima do inventário previsto' ELSE divergences END,updated_at=? WHERE code=?",
       )
-      .bind(pageCount, pageCount, now, batchCode)
+      .bind(realPageCount, realPageCount, now, batchCode)
       .run();
   } catch {
     await db.prepare("DELETE FROM files WHERE id=?").bind(inserted.id).run();
@@ -482,25 +524,29 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
-  await db
-    .prepare(
-      "INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'upload','file',?,?,?)",
-    )
-    .bind(
-      user.userId,
-      String(inserted.id),
-      JSON.stringify({
-        filename: file.name,
-        recordId,
-        department,
-        module: moduleName,
-        batchCode,
-        physicalLocation,
-        checksum,
-      }),
-      now,
-    )
-    .run();
+  try {
+    await db
+      .prepare(
+        "INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'upload','file',?,?,?)",
+      )
+      .bind(
+        user.userId,
+        String(inserted.id),
+        JSON.stringify({
+          filename: file.name,
+          recordId,
+          department,
+          module: moduleName,
+          batchCode,
+          physicalLocation,
+          checksum,
+        }),
+        now,
+      )
+      .run();
+  } catch {
+    // A auditoria não pode derrubar o upload já concluído
+  }
   return NextResponse.json({ document: serialize(inserted) }, { status: 201 });
 }
 
@@ -557,6 +603,19 @@ export async function PUT(request: NextRequest) {
       { status: 403 },
     );
   if (
+    current.confidentiality !== "internal" &&
+    body.confidentiality !== undefined &&
+    body.confidentiality !== current.confidentiality &&
+    !canReadConfidential(user)
+  )
+    return NextResponse.json(
+      {
+        error:
+          "Somente a direção pode reclassificar documentos restritos ou confidenciais",
+      },
+      { status: 403 },
+    );
+  if (
     String(body.status) === current.status &&
     ["validated", "archived"].includes(current.status) &&
     !canValidate(user)
@@ -565,17 +624,26 @@ export async function PUT(request: NextRequest) {
       { error: "Documento validado é imutável; solicite reabertura à gestão" },
       { status: 423 },
     );
+  const statusLabels: Record<string, string> = {
+    review: "A revisar",
+    indexed: "Classificado",
+    validated: "Validado",
+    archived: "Arquivado",
+    rejected: "Rejeitado",
+  };
   const next = String(body.status),
     transitions: Record<string, string[]> = {
       review: ["indexed", "rejected"],
       rejected: ["review"],
       indexed: ["validated", "review"],
       validated: ["archived", "review"],
-      archived: [],
+      archived: ["review"],
     };
   if (next !== current.status && !transitions[current.status]?.includes(next))
     return NextResponse.json(
-      { error: `Transição inválida: ${current.status} → ${next}` },
+      {
+        error: `Não é possível mover o documento de “${statusLabels[current.status] ?? current.status}” para “${statusLabels[next] ?? next}”.`,
+      },
       { status: 409 },
     );
   if (
@@ -586,6 +654,27 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(
       { error: "Somente direção ou gestores podem validar e arquivar" },
       { status: 403 },
+    );
+  if (
+    next !== current.status &&
+    ["validated", "archived"].includes(current.status) &&
+    !canValidate(user)
+  )
+    return NextResponse.json(
+      {
+        error:
+          "Somente direção ou gestores podem reabrir um documento validado ou arquivado",
+      },
+      { status: 403 },
+    );
+  if (
+    next !== current.status &&
+    current.status === "archived" &&
+    !String(body.rejectionReason || "").trim()
+  )
+    return NextResponse.json(
+      { error: "Informe o motivo da reabertura do documento arquivado" },
+      { status: 400 },
     );
   const checklist = (
       next === current.status
@@ -614,9 +703,22 @@ export async function PUT(request: NextRequest) {
       { error: "Informe o motivo da rejeição" },
       { status: 400 },
     );
+  const clientVersion = Number(body.version),
+    versionConflict =
+      Number.isInteger(clientVersion) &&
+      clientVersion > 0 &&
+      clientVersion !== current.version;
+  if (versionConflict)
+    return NextResponse.json(
+      {
+        error:
+          "Este documento foi alterado por outra pessoa enquanto você o editava. Recarregue a lista e tente novamente.",
+      },
+      { status: 409 },
+    );
   const updated = await db
     .prepare(
-      "UPDATE files SET document_type=?,reference_date=?,expires_at=?,notes=?,status=?,batch_code=?,physical_location=?,confidentiality=?,page_count=?,validation_checklist=?,ocr_text=?,reviewed_by=?,reviewed_at=?,rejection_reason=?,updated_at=? WHERE id=? RETURNING *",
+      "UPDATE files SET document_type=?,reference_date=?,expires_at=?,notes=?,status=?,batch_code=?,physical_location=?,confidentiality=?,page_count=?,validation_checklist=?,ocr_text=?,reviewed_by=?,reviewed_at=?,rejection_reason=?,updated_at=?,version=version+1 WHERE id=? AND version=? RETURNING *",
     )
     .bind(
       String(body.documentType || current.document_type),
@@ -635,39 +737,54 @@ export async function PUT(request: NextRequest) {
       String(body.rejectionReason || ""),
       now,
       id,
+      current.version,
     )
     .first<FileRow>();
-  if (!updated)
+  if (!updated) {
+    const fresh = await db
+      .prepare("SELECT version FROM files WHERE id=?")
+      .bind(id)
+      .first<{ version: number }>();
     return NextResponse.json(
-      { error: "Documento não encontrado" },
-      { status: 404 },
+      {
+        error:
+          fresh && fresh.version !== current.version
+            ? "Este documento foi alterado por outra pessoa. Recarregue a lista e tente novamente."
+            : "Documento não encontrado",
+      },
+      { status: fresh && fresh.version !== current.version ? 409 : 404 },
     );
-  await db
-    .prepare(
-      "INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'update','file',?,?,?)",
-    )
-    .bind(
-      user.userId,
-      String(id),
-      JSON.stringify({
-        before: {
-          documentType: current.document_type,
-          status: current.status,
-          batchCode: current.batch_code,
-          physicalLocation: current.physical_location,
-        },
-        after: {
-          documentType: updated.document_type,
-          status: updated.status,
-          batchCode: updated.batch_code,
-          physicalLocation: updated.physical_location,
-        },
-        reviewer: user.userId,
-        checklist,
-        rejectionReason: String(body.rejectionReason || ""),
-      }),
-      now,
-    )
-    .run();
+  }
+  try {
+    await db
+      .prepare(
+        "INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'update','file',?,?,?)",
+      )
+      .bind(
+        user.userId,
+        String(id),
+        JSON.stringify({
+          before: {
+            documentType: current.document_type,
+            status: current.status,
+            batchCode: current.batch_code,
+            physicalLocation: current.physical_location,
+          },
+          after: {
+            documentType: updated.document_type,
+            status: updated.status,
+            batchCode: updated.batch_code,
+            physicalLocation: updated.physical_location,
+          },
+          reviewer: user.userId,
+          checklist,
+          rejectionReason: String(body.rejectionReason || ""),
+        }),
+        now,
+      )
+      .run();
+  } catch {
+    // A auditoria não pode derrubar a atualização já aplicada
+  }
   return NextResponse.json({ document: serialize(updated) });
 }

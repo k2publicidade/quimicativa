@@ -174,8 +174,10 @@ function Modal({
 
 export default function ProductCenter({
   notify,
+  canExport = true,
 }: {
   notify: (message: string) => void;
+  canExport?: boolean;
 }) {
   const [tab, setTab] = useState("products");
   const [products, setProducts] = useState<Product[]>([]);
@@ -268,7 +270,12 @@ export default function ProductCenter({
       ) : (
         <>
           {tab === "products" && (
-            <ProductsTab products={products} onChanged={loadProducts} notify={notify} />
+            <ProductsTab
+              products={products}
+              onChanged={loadProducts}
+              notify={notify}
+              canExport={canExport}
+            />
           )}
           {tab === "lots" && (
             <LotsTab products={products} notify={notify} />
@@ -278,14 +285,29 @@ export default function ProductCenter({
           )}
           {tab === "licenses" && <LicensesTab notify={notify} />}
           {tab === "suppliers" && <SuppliersTab notify={notify} />}
-          {tab === "reports" && <ReportsTab notify={notify} />}
+          {tab === "reports" && canExport && (
+            <ReportsTab
+              notify={notify}
+              canExport={canExport}
+              products={products}
+            />
+          )}
         </>
       )}
     </>
   );
 }
 
-function ReportsTab({ notify }: { notify: (message: string) => void }) {
+function ReportsTab({
+  notify,
+  canExport,
+  products,
+}: {
+  notify: (message: string) => void;
+  canExport: boolean;
+  products: Product[];
+}) {
+  const [fichaProduct, setFichaProduct] = useState("");
   const open = (url: string) => {
     window.open(url, "_blank", "noopener");
   };
@@ -309,12 +331,15 @@ function ReportsTab({ notify }: { notify: (message: string) => void }) {
     {
       title: "Ficha consolidada do produto",
       description:
-        "Selecione um produto na aba Produtos e use o botão “Ficha PDF” na linha para gerar a ficha completa (dados + FISPQ + lotes).",
+        "Dados do produto, FISPQ vigente e lotes em estoque em um único documento.",
       url: "",
       tone: "green",
       restricted: false,
     },
   ];
+  const gerarFicha = () => {
+    if (fichaProduct) open(`/api/reports?type=ficha&productId=${fichaProduct}`);
+  };
   return (
     <section className="panel archive-panel">
       <div className="section-title">
@@ -324,17 +349,41 @@ function ReportsTab({ notify }: { notify: (message: string) => void }) {
         </div>
       </div>
       <div className="report-grid">
-        {reports.map((report) => (
+        {reports
+          .filter((report) => !report.restricted || canExport)
+          .map((report) => (
           <article className="report-card" key={report.title}>
             <span className={`report-icon ${report.tone}`}>PDF</span>
             <div>
               <strong>{report.title}</strong>
               <small>{report.description}</small>
             </div>
-            {report.url && (
+            {report.url ? (
               <button className="primary-button" onClick={() => open(report.url)}>
                 Baixar PDF
               </button>
+            ) : (
+              <div className="report-ficha">
+                <select
+                  aria-label="Escolher produto para a ficha"
+                  value={fichaProduct}
+                  onChange={(event) => setFichaProduct(event.target.value)}
+                >
+                  <option value="">Escolha o produto</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="primary-button"
+                  disabled={!fichaProduct}
+                  onClick={gerarFicha}
+                >
+                  Gerar ficha
+                </button>
+              </div>
             )}
           </article>
         ))}
@@ -347,10 +396,12 @@ function ProductsTab({
   products,
   onChanged,
   notify,
+  canExport = true,
 }: {
   products: Product[];
   onChanged: () => void;
   notify: (message: string) => void;
+  canExport?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Product | null>(null);
@@ -503,18 +554,20 @@ function ProductsTab({
                     </td>
                     <td>
                       <div className="row-actions">
-                        <button
-                          className="edit"
-                          onClick={() =>
-                            window.open(
-                              `/api/reports?type=ficha&productId=${product.id}`,
-                              "_blank",
-                              "noopener",
-                            )
-                          }
-                        >
-                          Ficha PDF
-                        </button>
+                        {canExport && (
+                          <button
+                            className="edit"
+                            onClick={() =>
+                              window.open(
+                                `/api/reports?type=ficha&productId=${product.id}`,
+                                "_blank",
+                                "noopener",
+                              )
+                            }
+                          >
+                            Ficha PDF
+                          </button>
+                        )}
                         <button className="edit" onClick={() => setEditing(product)}>
                           Editar
                         </button>
@@ -565,64 +618,6 @@ function ProductsTab({
                 />
               </label>
               <label>
-                Nº ONU
-                <input
-                  name="unNumber"
-                  placeholder="Ex.: 1823"
-                  defaultValue={editing?.unNumber}
-                />
-              </label>
-              <label>
-                Classe de perigo (GHS)
-                <select name="hazardClass" defaultValue={editing?.hazardClass ?? ""}>
-                  <option value="">Selecione</option>
-                  {hazardClasses.map((hazard) => (
-                    <option key={hazard}>{hazard}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Palavra de advertência
-                <select name="signalWord" defaultValue={editing?.signalWord ?? ""}>
-                  <option value="">Selecione</option>
-                  <option>Perigo</option>
-                  <option>Atenção</option>
-                </select>
-              </label>
-              <label className="check-field">
-                <input
-                  name="controlled"
-                  type="checkbox"
-                  defaultChecked={editing?.controlled}
-                />
-                Produto controlado
-              </label>
-              <label>
-                Órgão fiscalizador
-                <select name="controlAgency" defaultValue={editing?.controlAgency ?? ""}>
-                  <option value="">Selecione</option>
-                  {agencies.map((agency) => (
-                    <option key={agency}>{agency}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="check-field">
-                <input
-                  name="flammable"
-                  type="checkbox"
-                  defaultChecked={editing?.flammable}
-                />
-                Inflamável (NR-20)
-              </label>
-              <label>
-                Armazenamento
-                <input
-                  name="storage"
-                  placeholder="Ex.: Área de inflamáveis"
-                  defaultValue={editing?.storage}
-                />
-              </label>
-              <label>
                 Situação
                 <select name="status" defaultValue={editing?.status ?? "active"}>
                   <option value="active">Ativo</option>
@@ -630,23 +625,90 @@ function ProductsTab({
                 </select>
               </label>
               <label className="full">
-                Frases H (uma por linha)
-                <textarea
-                  name="hPhrases"
-                  rows={3}
-                  placeholder="Ex.: H314 – Provoca queimaduras..."
-                  defaultValue={editing?.hPhrases.join("\n")}
+                Armazenamento
+                <input
+                  name="storage"
+                  placeholder="Ex.: Área de corrosivos"
+                  defaultValue={editing?.storage}
                 />
               </label>
-              <label className="full">
-                Frases P (uma por linha)
-                <textarea
-                  name="pPhrases"
-                  rows={3}
-                  placeholder="Ex.: P280 – Use luvas de proteção..."
-                  defaultValue={editing?.pPhrases.join("\n")}
-                />
-              </label>
+            </div>
+            <details className="scan-details">
+              <summary>
+                Dados regulatórios e de segurança (preencha depois se precisar)
+              </summary>
+              <div className="scan-fields">
+                <label>
+                  Nº ONU (transporte)
+                  <input
+                    name="unNumber"
+                    placeholder="4 dígitos, ex.: 1823"
+                    defaultValue={editing?.unNumber}
+                  />
+                </label>
+                <label>
+                  Classe de perigo
+                  <select name="hazardClass" defaultValue={editing?.hazardClass ?? ""}>
+                    <option value="">Selecione</option>
+                    {hazardClasses.map((hazard) => (
+                      <option key={hazard}>{hazard}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Palavra de advertência
+                  <select name="signalWord" defaultValue={editing?.signalWord ?? ""}>
+                    <option value="">Selecione</option>
+                    <option>Perigo</option>
+                    <option>Atenção</option>
+                  </select>
+                </label>
+                <label className="check-field">
+                  <input
+                    name="controlled"
+                    type="checkbox"
+                    defaultChecked={editing?.controlled}
+                  />
+                  Produto controlado
+                </label>
+                <label>
+                  Órgão fiscalizador
+                  <select name="controlAgency" defaultValue={editing?.controlAgency ?? ""}>
+                    <option value="">Selecione</option>
+                    {agencies.map((agency) => (
+                      <option key={agency}>{agency}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="check-field">
+                  <input
+                    name="flammable"
+                    type="checkbox"
+                    defaultChecked={editing?.flammable}
+                  />
+                  Inflamável (NR-20)
+                </label>
+                <label className="full">
+                  Frases de perigo (códigos H, ex.: H314)
+                  <textarea
+                    name="hPhrases"
+                    rows={3}
+                    placeholder="Uma frase por linha. Os códigos estão na FISPQ do produto."
+                    defaultValue={editing?.hPhrases.join("\n")}
+                  />
+                </label>
+                <label className="full">
+                  Recomendações de segurança (códigos P, ex.: P280)
+                  <textarea
+                    name="pPhrases"
+                    rows={3}
+                    placeholder="Uma frase por linha. Os códigos estão na FISPQ do produto."
+                    defaultValue={editing?.pPhrases.join("\n")}
+                  />
+                </label>
+              </div>
+            </details>
+            <div className="scan-fields">
               <label className="full">
                 Observações
                 <textarea name="notes" rows={2} defaultValue={editing?.notes} />
@@ -743,7 +805,7 @@ function LotsTab({
         <div className="section-title">
           <div>
             <h2>Lotes e validade</h2>
-            <p>Saída sugerida pelo vencimento mais próximo (FEFO).</p>
+            <p>Saída sugerida pelo vencimento mais próximo.</p>
           </div>
           <button className="primary-button" onClick={() => setCreating(true)}>
             <span>+</span> Novo lote
@@ -768,7 +830,7 @@ function LotsTab({
             disabled={!productFilter}
             onClick={() => askSuggestion(Number(productFilter))}
           >
-            Sugerir saída (FEFO)
+            Sugerir ordem de saída
           </button>
         </div>
         {suggestion && (

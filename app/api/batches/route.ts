@@ -90,7 +90,7 @@ export async function PUT(request: NextRequest) {
     );
   const pending = await db
     .prepare(
-      "SELECT COUNT(*) total FROM files WHERE batch_code=? AND status NOT IN ('validated','archived')",
+      "SELECT COUNT(*) total FROM files WHERE batch_code=? AND status NOT IN ('validated','archived','rejected')",
     )
     .bind(batch.code)
     .first<{ total: number }>();

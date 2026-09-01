@@ -205,13 +205,30 @@ export async function POST(request: NextRequest) {
   }
   const now = Math.floor(Date.now() / 1000),
     status = String(form.get("status") || "active");
-  let created: FispqRow | null = null;
+  if (status === "active" && (!validityDate || !issueDate))
+    return NextResponse.json(
+      {
+        error:
+          "FISPQ vigente exige as datas de emissão e validade. Preencha as duas datas.",
+      },
+      { status: 400 },
+    );
+  let created: FispqRow | null = null,
+    archivedIds: number[] = [];
   try {
-    if (status === "active")
+    if (status === "active") {
+      const previous = await db
+        .prepare(
+          "SELECT id FROM fispq WHERE product_id=? AND status='active'",
+        )
+        .bind(productId)
+        .all<{ id: number }>();
       await db
         .prepare("UPDATE fispq SET status='archived',updated_at=? WHERE product_id=? AND status='active'")
         .bind(now, productId)
         .run();
+      archivedIds = previous.results.map((row) => row.id);
+    }
     created = await db
       .prepare(
         "INSERT INTO fispq (product_id,version,issue_date,validity_date,file_key,file_name,file_size,status,notes,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *",
@@ -256,6 +273,22 @@ export async function POST(request: NextRequest) {
       now,
     )
     .run();
+  for (const archivedId of archivedIds)
+    await db
+      .prepare(
+        "INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'archive','fispq',?,?,?)",
+      )
+      .bind(
+        actor.userId,
+        String(archivedId),
+        JSON.stringify({
+          reason: "Substituída por versão vigente",
+          newVersionId: created.id,
+          newVersion: version,
+        }),
+        now,
+      )
+      .run();
   return NextResponse.json({ fispq: serialize(created) }, { status: 201 });
 }
 
@@ -283,22 +316,49 @@ export async function PUT(request: NextRequest) {
       { status: 404 },
     );
   const nextStatus = String(body.status || current.status),
+    nextValidity = dateToEpoch(body.validityDate) ?? current.validity_date,
+    nextIssue = dateToEpoch(body.issueDate) ?? current.issue_date,
     now = Math.floor(Date.now() / 1000);
-  if (nextStatus === "active" && current.status !== "active")
+  if (nextStatus === "active" && (!nextValidity || !nextIssue))
+    return NextResponse.json(
+      {
+        error:
+          "FISPQ vigente exige as datas de emissão e validade. Preencha as duas datas.",
+      },
+      { status: 400 },
+    );
+  if (nextStatus === "active" && current.status !== "active") {
+    const previous = await db
+      .prepare("SELECT id FROM fispq WHERE product_id=? AND status='active'")
+      .bind(current.product_id)
+      .all<{ id: number }>();
     await db
       .prepare(
         "UPDATE fispq SET status='archived',updated_at=? WHERE product_id=? AND status='active'",
       )
       .bind(now, current.product_id)
       .run();
+    for (const archived of previous.results)
+      await db
+        .prepare(
+          "INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'archive','fispq',?,?,?)",
+        )
+        .bind(
+          actor.userId,
+          String(archived.id),
+          JSON.stringify({ reason: "Substituída por versão vigente", newVersionId: id }),
+          now,
+        )
+        .run();
+  }
   const updated = await db
     .prepare(
       "UPDATE fispq SET version=?,issue_date=?,validity_date=?,status=?,notes=?,updated_at=? WHERE id=? RETURNING *",
     )
     .bind(
       String(body.version || current.version),
-      dateToEpoch(body.issueDate) ?? current.issue_date,
-      dateToEpoch(body.validityDate) ?? current.validity_date,
+      nextIssue,
+      nextValidity,
       nextStatus,
       String(body.notes ?? current.notes ?? ""),
       now,

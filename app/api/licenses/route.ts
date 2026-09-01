@@ -101,6 +101,15 @@ export async function POST(request: NextRequest) {
       { error: "Informe o tipo, o órgão emissor e o número da licença" },
       { status: 400 },
     );
+  const validityDate = dateToEpoch(body.validityDate);
+  if ((String(body.status || "active") === "active") && !validityDate)
+    return NextResponse.json(
+      {
+        error:
+          "Licença vigente exige a data de validade. Informe quando ela vence.",
+      },
+      { status: 400 },
+    );
   const now = Math.floor(Date.now() / 1000),
     db = getD1(),
     created = await db
@@ -111,7 +120,7 @@ export async function POST(request: NextRequest) {
         licenseType,
         issuingAgency,
         number,
-        dateToEpoch(body.validityDate),
+        validityDate,
         String(body.scope || ""),
         String(body.status || "active"),
         String(body.notes || ""),
@@ -163,15 +172,25 @@ export async function PUT(request: NextRequest) {
       { status: 404 },
     );
   const now = Math.floor(Date.now() / 1000),
-    updated = await db
-      .prepare(
-        "UPDATE licenses SET license_type=?,issuing_agency=?,number=?,validity_date=?,scope=?,status=?,notes=?,updated_at=? WHERE id=? RETURNING *",
-      )
-      .bind(
-        String(body.licenseType || current.license_type),
-        String(body.issuingAgency || current.issuing_agency),
-        String(body.number || current.number),
-        dateToEpoch(body.validityDate) ?? current.validity_date,
+    nextValidity = dateToEpoch(body.validityDate) ?? current.validity_date,
+    nextStatus = String(body.status || current.status);
+  if (nextStatus === "active" && !nextValidity)
+    return NextResponse.json(
+      {
+        error:
+          "Licença vigente exige a data de validade. Informe quando ela vence.",
+      },
+      { status: 400 },
+    );
+  const updated = await db
+    .prepare(
+      "UPDATE licenses SET license_type=?,issuing_agency=?,number=?,validity_date=?,scope=?,status=?,notes=?,updated_at=? WHERE id=? RETURNING *",
+    )
+    .bind(
+      String(body.licenseType || current.license_type),
+      String(body.issuingAgency || current.issuing_agency),
+      String(body.number || current.number),
+      nextValidity,
         String(body.scope ?? current.scope ?? ""),
         String(body.status || current.status),
         String(body.notes ?? current.notes ?? ""),

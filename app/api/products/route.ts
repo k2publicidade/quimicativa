@@ -40,6 +40,44 @@ const parseJsonArray = (value: string): string[] => {
   }
 };
 
+const HAZARD_CLASSES = [
+  "Corrosivo",
+  "Inflamável",
+  "Tóxico",
+  "Irritante",
+  "Perigoso ao meio ambiente",
+  "Oxidante",
+  "Gás sob pressão",
+  "Perigoso à saúde",
+  "Explosivo",
+];
+const AGENCIES = [
+  "Polícia Federal",
+  "Exército",
+  "Anvisa",
+  "IBAMA",
+  "Corpo de Bombeiros",
+  "Outro",
+];
+const validateRegulatory = (body: Record<string, unknown>) => {
+  const unNumber = String(body.unNumber || "").trim();
+  if (unNumber && !/^\d{4}$/.test(unNumber))
+    return "Número ONU deve ter exatamente 4 dígitos (ex.: 1823)";
+  const hazardClass = String(body.hazardClass || "");
+  if (hazardClass && !HAZARD_CLASSES.includes(hazardClass))
+    return "Classe de perigo inválida. Escolha uma das opções da lista.";
+  const signalWord = String(body.signalWord || "");
+  if (signalWord && !["Perigo", "Atenção"].includes(signalWord))
+    return "Palavra de advertência inválida. Use Perigo ou Atenção.";
+  const controlAgency = String(body.controlAgency || "");
+  if (controlAgency && !AGENCIES.includes(controlAgency))
+    return "Órgão fiscalizador inválido. Escolha uma das opções da lista.";
+  const status = String(body.status || "active");
+  if (!["active", "inactive"].includes(status))
+    return "Situação inválida. Use Ativo ou Inativo.";
+  return null;
+};
+
 export const serializeProduct = (row: ProductRow) => ({
   id: row.id,
   name: row.name,
@@ -69,10 +107,9 @@ export const computeProductAlert = (
   const day = 86400;
   const today = Math.floor(now / day) * day;
   if (!fispq || fispq.status !== "active") return "FISPQ pendente";
-  if (fispq.validity_date && fispq.validity_date < today)
-    return "FISPQ vencida";
-  if (fispq.validity_date && fispq.validity_date <= today + 30 * day)
-    return "FISPQ vence em breve";
+  if (!fispq.validity_date) return "FISPQ sem data de validade";
+  if (fispq.validity_date < today) return "FISPQ vencida";
+  if (fispq.validity_date <= today + 30 * day) return "FISPQ vence em breve";
   if (lots?.next_expiry && lots.next_expiry <= today + 30 * day)
     return "Lote vence em breve";
   if (lots?.next_expiry && lots.next_expiry < today)
@@ -188,6 +225,9 @@ export async function POST(request: NextRequest) {
       { error: "Informe o nome e a categoria do produto" },
       { status: 400 },
     );
+  const regulatoryError = validateRegulatory(body);
+  if (regulatoryError)
+    return NextResponse.json({ error: regulatoryError }, { status: 400 });
   if (controlled && !controlAgency)
     return NextResponse.json(
       { error: "Produto controlado exige o órgão fiscalizador" },
@@ -263,15 +303,22 @@ export async function PUT(request: NextRequest) {
   const name = String(body.name || current.name).trim(),
     category = String(body.category || current.category).trim(),
     controlled =
-      body.controlled === true || body.controlled === 1 || current.controlled === 1,
+      body.controlled !== undefined && body.controlled !== null
+        ? body.controlled === true || body.controlled === 1
+        : current.controlled === 1,
     flammable =
-      body.flammable === true || body.flammable === 1 || current.flammable === 1,
+      body.flammable !== undefined && body.flammable !== null
+        ? body.flammable === true || body.flammable === 1
+        : current.flammable === 1,
     controlAgency = String(body.controlAgency || current.control_agency || "").trim();
   if (!name || !category)
     return NextResponse.json(
       { error: "Informe o nome e a categoria do produto" },
       { status: 400 },
     );
+  const regulatoryError = validateRegulatory(body);
+  if (regulatoryError)
+    return NextResponse.json({ error: regulatoryError }, { status: 400 });
   if (controlled && !controlAgency)
     return NextResponse.json(
       { error: "Produto controlado exige o órgão fiscalizador" },

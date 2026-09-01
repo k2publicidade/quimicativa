@@ -552,3 +552,8 @@
     width: 125px;
   }
 }
+
+.scan-details{border:1px dashed #d5dce4;border-radius:10px;padding:0 14px;margin-top:12px}
+.scan-details summary{cursor:pointer;color:#5f6f83;font-size:9px;font-weight:750;padding:11px 0;user-select:none}
+.scan-details summary:hover{color:#2d6fc8}
+.scan-details .scan-fields{padding-bottom:14px}
