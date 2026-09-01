@@ -557,3 +557,12 @@
 .scan-details summary{cursor:pointer;color:#5f6f83;font-size:9px;font-weight:750;padding:11px 0;user-select:none}
 .scan-details summary:hover{color:#2d6fc8}
 .scan-details .scan-fields{padding-bottom:14px}
+
+.review-panel{margin-top:14px}
+.review-panel select{border:1px solid var(--line);border-radius:7px;padding:7px 6px;font-size:9px;max-width:150px}
+.review-extracted{display:grid;grid-template-columns:repeat(2,minmax(90px,1fr));gap:6px;min-width:230px}
+.review-extracted label{display:flex;flex-direction:column;gap:2px}
+.review-extracted label span{font-size:7px;color:#8b96a6;font-weight:800;text-transform:uppercase;letter-spacing:.4px}
+.review-extracted input{border:1px solid var(--line);border-radius:7px;padding:6px;font-size:9px;min-width:0}
+.review-notes{grid-column:1/-1}
+.review-fields{min-width:280px}

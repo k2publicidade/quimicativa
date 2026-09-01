@@ -1,5 +1,8 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { classifyDocument, classifyXml, labelOf } from "./document-classifier";
+import type { Classification, ExtractedFields } from "./document-classifier";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 type DocumentItem = {
   id: number;
@@ -23,6 +26,20 @@ type DocumentItem = {
   createdAt: number;
   recordTitle: string;
 };
+type Suggestion = {
+  key: string;
+  file: File;
+  text: string;
+  department: string;
+  module: string;
+  documentType: string;
+  referenceDate: string;
+  expiresAt: string;
+  notes: string;
+  extracted: ExtractedFields;
+  confidence: Classification["confidence"];
+};
+
 const areas: Record<string, { label: string; modules: string[] }> = {
   rh: {
     label: "Recursos Humanos",
@@ -61,6 +78,10 @@ const areas: Record<string, { label: string; modules: string[] }> = {
       "DRE e Relatórios",
     ],
   },
+  produtos: {
+    label: "Produtos",
+    modules: ["Produtos", "Lotes e validade", "FISPQ", "Licenças", "Fornecedores"],
+  },
 };
 const types = [
   "Contrato",
@@ -83,6 +104,30 @@ const statusLabel: Record<string, string> = {
   rejected: "Rejeitado",
 };
 const accepted = ".pdf,.jpg,.jpeg,.png,.webp,.tif,.tiff,.xml";
+
+async function readPdfText(file: File): Promise<string> {
+  try {
+    const pdfjs = await import("pdfjs-dist");
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() })
+      .promise;
+    const pages: string[] = [];
+    const max = Math.min(doc.numPages, 3);
+    for (let i = 1; i <= max; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      pages.push(
+        content.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" "),
+      );
+    }
+    await doc.destroy();
+    return pages.join("\n");
+  } catch {
+    return "";
+  }
+}
 
 export default function DocumentCenter({
   notify,
@@ -111,10 +156,12 @@ export default function DocumentCenter({
       byDepartment: Record<string, number>;
     }>({ total: 0, toReview: 0, expiring: 0, indexed: 0, byDepartment: {} }),
     [loading, setLoading] = useState(true),
-    [uploading, setUploading] = useState(""),
+    [analyzing, setAnalyzing] = useState<boolean | string>(false),
+    [sending, setSending] = useState<boolean | string>(false),
     [department, setDepartment] = useState("rh"),
     [module, setModule] = useState(areas.rh.modules[0]),
     [query, setQuery] = useState(""),
+    [suggestions, setSuggestions] = useState<Suggestion[]>([]),
     [editing, setEditing] = useState<DocumentItem | null>(null);
   const load = async () => {
     setLoading(true);
@@ -169,7 +216,6 @@ export default function DocumentCenter({
           (value): value is File => value instanceof File && value.size > 0,
         );
     if (!files.length) return;
-    // Gera identificação do lote uma única vez para agrupar os arquivos
     const generatedCode = `LOTE-${new Date()
         .toISOString()
         .slice(0, 10)
@@ -178,49 +224,139 @@ export default function DocumentCenter({
       physicalLocation =
         String(source.get("physicalLocation") || "").trim() || "A definir",
       responsible = String(source.get("responsible") || "").trim();
-    const errors: string[] = [];
-    let sent = 0;
+    setAnalyzing(true);
+    const detected: Suggestion[] = [];
+    let autoDetected = 0;
     try {
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        setUploading(`${i + 1} de ${files.length} — ${file.name}`);
-        const form = new FormData();
-        for (const [key, value] of source.entries())
-          if (key !== "file") form.append(key, value);
-        form.set("department", department);
-        form.set("module", module);
-        form.set("batchCode", batchCode);
-        form.set("physicalLocation", physicalLocation);
-        if (responsible) form.set("responsible", responsible);
-        form.set("file", file);
-        if (file.type.startsWith("image/")) {
-          setUploading(`Lendo o texto de ${file.name} — pode levar alguns segundos...`);
-          try {
+        const file = files[i],
+          isImage = file.type.startsWith("image/"),
+          isXml = file.type.includes("xml");
+        setAnalyzing(
+          `${i + 1} de ${files.length} — ${isImage ? "lendo o texto de" : isXml ? "lendo o arquivo" : "lendo o PDF"} ${file.name}...`,
+        );
+        let text = "";
+        try {
+          if (isImage) {
             const { default: Tesseract } = await import("tesseract.js");
             const { data } = await Tesseract.recognize(file, "por");
-            const text = (data.text || "").trim();
-            if (text) form.set("ocrText", text.slice(0, 200000));
-          } catch {
-            // Leitura falhou — o documento segue sem texto extraído
+            text = (data.text || "").trim();
+          } else if (isXml) {
+            text = (await file.text()).trim();
+          } else if (file.type === "application/pdf") {
+            text = await readPdfText(file);
           }
-          setUploading(`${i + 1} de ${files.length} — ${file.name}`);
+        } catch {
+          text = "";
         }
+        const fallback: Classification = {
+          department: "",
+          module: "",
+          documentType: "Documento geral",
+          fields: {},
+          confidence: "baixa",
+          reason: "Não foi possível ler o conteúdo",
+        };
+        const classification = text
+          ? isXml
+            ? classifyXml(text, file.name)
+            : classifyDocument(text, file.name)
+          : fallback;
+        if (classification.confidence !== "baixa") autoDetected += 1;
+        detected.push({
+          key: `${file.name}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          file,
+          text,
+          department:
+            classification.department ||
+            department,
+          module: classification.module || module,
+          documentType:
+            classification.documentType === "Documento geral"
+              ? "Documento geral"
+              : classification.documentType,
+          referenceDate: classification.fields.data || "",
+          expiresAt: classification.fields.validade || classification.fields.vencimento || "",
+          notes: "",
+          extracted: classification.fields,
+          confidence: classification.confidence,
+        });
+      }
+    } catch {
+      notify("Falha ao analisar os arquivos. Tente novamente.");
+    }
+    setSuggestions(detected);
+    setAnalyzing(false);
+    if (detected.length) {
+      notify(
+        autoDetected
+          ? `Identificação automática: ${autoDetected} de ${detected.length} documento(s) reconhecidos. Confira antes de enviar.`
+          : "Não conseguimos identificar o tipo destes documentos. Ajuste o setor e envie normalmente.",
+      );
+    }
+  };
+  const updateSuggestion = (key: string, patch: Partial<Suggestion>) => {
+    setSuggestions((list) =>
+      list.map((item) => {
+        if (item.key !== key) return item;
+        const next = { ...item, ...patch };
+        if (patch.department && patch.department !== item.department)
+          next.module = areas[patch.department].modules[0];
+        return next;
+      }),
+    );
+  };
+  const sendAll = async () => {
+    if (!suggestions.length || sending) return;
+    const formElement = document.querySelector<HTMLFormElement>(".scan-card");
+    const source = formElement ? new FormData(formElement) : new FormData();
+    const generatedCode = `LOTE-${new Date()
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, "")}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      batchCode = String(source.get("batchCode") || "").trim() || generatedCode,
+      physicalLocation =
+        String(source.get("physicalLocation") || "").trim() || "A definir",
+      responsible = String(source.get("responsible") || "").trim();
+    setSending(true);
+    const errors: string[] = [];
+    let sent = 0;
+    for (let i = 0; i < suggestions.length; i++) {
+      const item = suggestions[i];
+      setSending(`${i + 1} de ${suggestions.length} — ${item.file.name}`);
+      const form = new FormData();
+      form.set("department", item.department);
+      form.set("module", item.module);
+      form.set("documentType", item.documentType);
+      form.set("batchCode", batchCode);
+      form.set("physicalLocation", physicalLocation);
+      if (responsible) form.set("responsible", responsible);
+      form.set("referenceDate", item.referenceDate);
+      form.set("expiresAt", item.expiresAt);
+      form.set("notes", item.notes);
+      if (item.text) form.set("ocrText", item.text.slice(0, 200000));
+      if (Object.keys(item.extracted).length)
+        form.set("extracted", JSON.stringify(item.extracted));
+      form.set("file", item.file);
+      try {
         const r = await fetch("/api/documents", { method: "POST", body: form }),
           data = await r.json();
         if (r.ok) sent += 1;
-        else errors.push(`${file.name}: ${data.error || "não foi possível enviar"}`);
+        else errors.push(`${item.file.name}: ${data.error || "não foi possível enviar"}`);
+      } catch {
+        errors.push(`${item.file.name}: falha de conexão`);
       }
-    } catch {
-      errors.push("Falha de conexão ao enviar os arquivos");
     }
+    setSending(false);
     if (errors.length) {
       notify(
         `${sent} enviado(s) · ${errors.length} com problema: ${errors.slice(0, 3).join(" | ")}${errors.length > 3 ? "…" : ""}`,
       );
     } else {
-      notify(`${sent} documento(s) enviado(s) para revisão`);
+      notify(`${sent} documento(s) enviado(s) para conferência`);
     }
-    formElement.reset();
+    setSuggestions([]);
+    formElement?.reset();
     await load();
   };
   const updateStatus = async (doc: DocumentItem, status: string) => {
@@ -519,9 +655,13 @@ export default function DocumentCenter({
           </div>
           <button
             className="primary-button scan-submit"
-            disabled={Boolean(uploading)}
+            disabled={Boolean(analyzing) || Boolean(sending)}
           >
-            {uploading ? `Enviando ${uploading}...` : "Enviar para conferência"}
+            {analyzing
+              ? `Analisando ${analyzing}...`
+              : sending
+                ? `Enviando ${sending}...`
+                : "Analisar e enviar"}
           </button>
         </form>
         <aside className="migration-aside">
@@ -616,6 +756,187 @@ export default function DocumentCenter({
           </div>
         </aside>
       </section>
+      {suggestions.length > 0 && (
+        <section className="panel review-panel" aria-label="Revisar identificação">
+          <div className="panel-heading">
+            <div>
+              <h2>Confira a identificação automática</h2>
+              <p>
+                Ajuste o setor, o tipo e as informações reconhecidas antes de
+                enviar para conferência.
+              </p>
+            </div>
+            <button
+              className="primary-button"
+              disabled={Boolean(sending)}
+              onClick={sendAll}
+            >
+              {sending ? `Enviando ${sending}...` : `Enviar ${suggestions.length} documento(s)`}
+            </button>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Arquivo</th>
+                  <th>Setor</th>
+                  <th>Módulo</th>
+                  <th>Tipo</th>
+                  <th>Reconhecimento</th>
+                  <th>Informações identificadas</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {suggestions.map((item) => (
+                  <tr key={item.key}>
+                    <td>
+                      <strong>{item.file.name}</strong>
+                      <small>{formatSize(item.file.size)}</small>
+                    </td>
+                    <td>
+                      <select
+                        aria-label="Setor"
+                        value={item.department}
+                        onChange={(event) =>
+                          updateSuggestion(item.key, {
+                            department: event.target.value,
+                          })
+                        }
+                      >
+                        {Object.entries(areas).map(([key, area]) => (
+                          <option value={key} key={key}>
+                            {area.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        aria-label="Módulo"
+                        value={item.module}
+                        onChange={(event) =>
+                          updateSuggestion(item.key, { module: event.target.value })
+                        }
+                      >
+                        {areas[item.department]?.modules.map((mod) => (
+                          <option key={mod}>{mod}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        aria-label="Tipo de documento"
+                        value={item.documentType}
+                        onChange={(event) =>
+                          updateSuggestion(item.key, {
+                            documentType: event.target.value,
+                          })
+                        }
+                      >
+                        {types.map((type) => (
+                          <option key={type}>{type}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <span
+                        className={`record-status ${
+                          item.confidence === "alta"
+                            ? "active"
+                            : item.confidence === "media"
+                              ? "pending"
+                              : "archived"
+                        }`}
+                      >
+                        {item.confidence === "alta"
+                          ? "Alta confiança"
+                          : item.confidence === "media"
+                            ? "Confiança média"
+                            : "Não reconhecido"}
+                      </span>
+                    </td>
+                    <td className="review-fields">
+                      <div className="review-extracted">
+                        {Object.keys(item.extracted).length ? (
+                          Object.entries(item.extracted).map(([key, value]) => (
+                            <label key={key}>
+                              <span>{labelOf(key)}</span>
+                              <input
+                                value={value}
+                                onChange={(event) =>
+                                  updateSuggestion(item.key, {
+                                    extracted: {
+                                      ...item.extracted,
+                                      [key]: event.target.value,
+                                    },
+                                  })
+                                }
+                              />
+                            </label>
+                          ))
+                        ) : (
+                          <small>Nenhum campo identificado</small>
+                        )}
+                        <label>
+                          <span>Data do documento</span>
+                          <input
+                            type="date"
+                            value={item.referenceDate}
+                            onChange={(event) =>
+                              updateSuggestion(item.key, {
+                                referenceDate: event.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span>Validade, se houver</span>
+                          <input
+                            type="date"
+                            value={item.expiresAt}
+                            onChange={(event) =>
+                              updateSuggestion(item.key, {
+                                expiresAt: event.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="review-notes">
+                          <span>Observações</span>
+                          <input
+                            value={item.notes}
+                            placeholder="Ex.: estado do original"
+                            onChange={(event) =>
+                              updateSuggestion(item.key, {
+                                notes: event.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="row-actions">
+                        <button
+                          className="edit"
+                          onClick={() =>
+                            setSuggestions((list) =>
+                              list.filter((s) => s.key !== item.key),
+                            )
+                          }
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       <section className="panel archive-panel">
         <div className="panel-heading">
           <div>

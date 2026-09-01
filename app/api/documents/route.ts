@@ -253,6 +253,7 @@ export async function POST(request: NextRequest) {
     documentType = String(form.get("documentType") || ""),
     notes = String(form.get("notes") || ""),
     ocrText = String(form.get("ocrText") || "").slice(0, 200000),
+    extractedRaw = String(form.get("extracted") || ""),
     batchCode = String(form.get("batchCode") || "").trim(),
     physicalLocation = String(form.get("physicalLocation") || "").trim(),
     responsible = String(form.get("responsible") || user.displayName).trim(),
@@ -372,6 +373,19 @@ export async function POST(request: NextRequest) {
       );
   }
   const batchWasNew = !existingBatch;
+  let extracted: Record<string, string> = {};
+  if (extractedRaw) {
+    try {
+      const parsed = JSON.parse(extractedRaw);
+      if (parsed && typeof parsed === "object")
+        extracted = Object.fromEntries(
+          Object.entries(parsed).map(([key, value]) => [key, String(value)]),
+        );
+    } catch {
+      // campos identificados inválidos são ignorados
+    }
+  }
+  const extractedTitle = extracted.fornecedor || extracted.cliente || extracted.colaborador || extracted.produto;
   let recordId = requestedRecordId,
     createdRecord = false;
   if (!Number.isInteger(recordId) || recordId <= 0) {
@@ -380,11 +394,12 @@ export async function POST(request: NextRequest) {
         "INSERT INTO records (department,module,title,description,metadata,status,priority,owner_id,due_date,created_at,updated_at) VALUES ('digitalizacao','Triagem documental',?,?,?,'review','medium',?,?,?,?) RETURNING id",
       )
       .bind(
-        `${documentType} — ${file.name}`,
+        `${documentType} — ${extractedTitle || file.name}`,
         notes,
         JSON.stringify({
           source: "Acervo físico",
           migrationStatus: "Digitalizado",
+          ...(Object.keys(extracted).length ? { identificacaoAutomatica: extracted } : {}),
         }),
         user.userId,
         expiresAt,
