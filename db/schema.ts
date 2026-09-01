@@ -63,6 +63,7 @@ export const files = sqliteTable("files", {
   pageCount: integer("page_count").notNull().default(1),
   version: integer("version").notNull().default(1),
   validationChecklist: text("validation_checklist").notNull().default("{}"),
+  ocrText: text("ocr_text"),
   reviewedBy: text("reviewed_by").references(() => users.id),
   reviewedAt: integer("reviewed_at", { mode: "timestamp" }),
   rejectionReason: text("rejection_reason"),

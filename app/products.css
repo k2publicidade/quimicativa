@@ -29,4 +29,13 @@
 .cert-label{display:block;font-size:8px;color:#8390a1;font-weight:800;letter-spacing:.4px;margin-bottom:8px}
 .cert-row{display:flex;gap:8px;margin-bottom:8px}
 .cert-row input{flex:1}
+.report-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:14px}
+.report-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.report-card strong{font-size:11px;color:#29354a}
+.report-card small{font-size:9px;color:#8390a1;line-height:1.6}
+.report-icon{align-self:flex-start;border-radius:8px;padding:6px 9px;font-size:8px;font-weight:800;letter-spacing:.5px}
+.report-icon.amber{background:#fff3df;color:#c47b1e}
+.report-icon.red{background:#fee9e8;color:#cf4f4f}
+.report-icon.green{background:#e6f5ef;color:#178869}
+.report-card .primary-button{margin-top:auto}
 @media(max-width:720px){.product-stats{grid-template-columns:1fr 1fr}.cert-row{flex-direction:column}}

@@ -1,0 +1,1 @@
+ALTER TABLE `files` ADD `ocr_text` text;

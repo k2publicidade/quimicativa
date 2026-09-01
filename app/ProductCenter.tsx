@@ -212,6 +212,7 @@ export default function ProductCenter({
     ["fispq", "FISPQ", `${productSummary.alerts}`],
     ["licenses", "Licenças", ""],
     ["suppliers", "Fornecedores", ""],
+    ["reports", "Relatórios", ""],
   ] as const;
 
   return (
@@ -277,9 +278,68 @@ export default function ProductCenter({
           )}
           {tab === "licenses" && <LicensesTab notify={notify} />}
           {tab === "suppliers" && <SuppliersTab notify={notify} />}
+          {tab === "reports" && <ReportsTab notify={notify} />}
         </>
       )}
     </>
+  );
+}
+
+function ReportsTab({ notify }: { notify: (message: string) => void }) {
+  const open = (url: string) => {
+    window.open(url, "_blank", "noopener");
+  };
+  const reports = [
+    {
+      title: "Estoque — vencimento em 60 dias",
+      description:
+        "Lotes com validade vencida ou próxima, ordenados pelo vencimento mais próximo.",
+      url: "/api/reports?type=estoque",
+      tone: "amber",
+      restricted: false,
+    },
+    {
+      title: "Produtos controlados — prestação de contas",
+      description:
+        "Estoque e lotes de produtos sujeitos a órgão fiscalizador, para apresentação à Polícia Federal, Exército ou órgão competente.",
+      url: "/api/reports?type=controlados",
+      tone: "red",
+      restricted: true,
+    },
+    {
+      title: "Ficha consolidada do produto",
+      description:
+        "Selecione um produto na aba Produtos e use o botão “Ficha PDF” na linha para gerar a ficha completa (dados + FISPQ + lotes).",
+      url: "",
+      tone: "green",
+      restricted: false,
+    },
+  ];
+  return (
+    <section className="panel archive-panel">
+      <div className="section-title">
+        <div>
+          <h2>Relatórios e exportação</h2>
+          <p>PDFs gerados a partir dos dados estruturados — sempre sincronizados com o sistema.</p>
+        </div>
+      </div>
+      <div className="report-grid">
+        {reports.map((report) => (
+          <article className="report-card" key={report.title}>
+            <span className={`report-icon ${report.tone}`}>PDF</span>
+            <div>
+              <strong>{report.title}</strong>
+              <small>{report.description}</small>
+            </div>
+            {report.url && (
+              <button className="primary-button" onClick={() => open(report.url)}>
+                Baixar PDF
+              </button>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -445,8 +505,17 @@ function ProductsTab({
                       <div className="row-actions">
                         <button
                           className="edit"
-                          onClick={() => setEditing(product)}
+                          onClick={() =>
+                            window.open(
+                              `/api/reports?type=ficha&productId=${product.id}`,
+                              "_blank",
+                              "noopener",
+                            )
+                          }
                         >
+                          Ficha PDF
+                        </button>
+                        <button className="edit" onClick={() => setEditing(product)}>
                           Editar
                         </button>
                       </div>

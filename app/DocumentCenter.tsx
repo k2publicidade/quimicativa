@@ -19,6 +19,7 @@ type DocumentItem = {
   confidentiality: string;
   pageCount: number;
   version: number;
+  ocrText: string;
   createdAt: number;
   recordTitle: string;
 };
@@ -152,7 +153,7 @@ export default function DocumentCenter({
   const visible = useMemo(
     () =>
       docs.filter((d) =>
-        `${d.filename} ${d.documentType} ${d.recordTitle} ${d.module} ${d.batchCode} ${d.physicalLocation}`
+        `${d.filename} ${d.documentType} ${d.recordTitle} ${d.module} ${d.batchCode} ${d.physicalLocation} ${(d.ocrText || "").slice(0, 4000)}`
           .toLowerCase()
           .includes(query.toLowerCase()),
       ),
@@ -170,16 +171,29 @@ export default function DocumentCenter({
     if (!files.length) return;
     try {
       for (let i = 0; i < files.length; i++) {
-        setUploading(`${i + 1} de ${files.length}`);
+        const file = files[i];
+        setUploading(`${i + 1} de ${files.length} — ${file.name}`);
         const form = new FormData();
         for (const [key, value] of source.entries())
           if (key !== "file") form.append(key, value);
         form.set("department", department);
         form.set("module", module);
-        form.set("file", files[i]);
+        form.set("file", file);
+        if (file.type.startsWith("image/")) {
+          setUploading(`Lendo o texto de ${file.name} (OCR)...`);
+          try {
+            const { default: Tesseract } = await import("tesseract.js");
+            const { data } = await Tesseract.recognize(file, "por");
+            const text = (data.text || "").trim();
+            if (text) form.set("ocrText", text.slice(0, 200000));
+          } catch {
+            // OCR falhou — o documento segue sem texto extraído
+          }
+          setUploading(`${i + 1} de ${files.length} — ${file.name}`);
+        }
         const r = await fetch("/api/documents", { method: "POST", body: form }),
           data = await r.json();
-        if (!r.ok) throw new Error(data.error || `Falha em ${files[i].name}`);
+        if (!r.ok) throw new Error(data.error || `Falha em ${file.name}`);
       }
       notify(`${files.length} documento(s) enviado(s) para revisão`);
       formElement.reset();
@@ -296,6 +310,7 @@ export default function DocumentCenter({
         confidentiality: String(form.get("confidentiality") || "internal"),
         pageCount: Number(form.get("pageCount")) || 1,
         notes: String(form.get("notes") || ""),
+        ocrText: String(form.get("ocrText") || ""),
       };
     const r = await fetch("/api/documents", {
         method: "PUT",
@@ -802,6 +817,15 @@ export default function DocumentCenter({
               <label className="full">
                 Observações
                 <textarea name="notes" rows={3} defaultValue={editing.notes} />
+              </label>
+              <label className="full">
+                Texto extraído (OCR) — usado na busca
+                <textarea
+                  name="ocrText"
+                  rows={5}
+                  defaultValue={editing.ocrText}
+                  placeholder="Texto reconhecido da imagem. Confira e corrija trechos importantes."
+                />
               </label>
             </div>
             <footer>

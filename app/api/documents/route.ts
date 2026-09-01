@@ -33,6 +33,7 @@ type FileRow = {
   page_count: number;
   version: number;
   validation_checklist: string;
+  ocr_text: string | null;
   reviewed_by: string | null;
   reviewed_at: number | null;
   rejection_reason: string | null;
@@ -65,6 +66,7 @@ const serialize = (row: FileRow) => ({
   pageCount: row.page_count,
   version: row.version,
   validationChecklist: JSON.parse(row.validation_checklist || "{}"),
+  ocrText: row.ocr_text ?? "",
   reviewedBy: row.reviewed_by,
   reviewedAt: row.reviewed_at,
   rejectionReason: row.rejection_reason ?? "",
@@ -249,6 +251,7 @@ export async function POST(request: NextRequest) {
     moduleName = String(form.get("module") || ""),
     documentType = String(form.get("documentType") || ""),
     notes = String(form.get("notes") || ""),
+    ocrText = String(form.get("ocrText") || "").slice(0, 200000),
     batchCode = String(form.get("batchCode") || "").trim(),
     physicalLocation = String(form.get("physicalLocation") || "").trim(),
     responsible = String(form.get("responsible") || user.displayName).trim(),
@@ -379,7 +382,7 @@ export async function POST(request: NextRequest) {
     });
     inserted = await db
       .prepare(
-        "INSERT INTO files (record_id,storage_key,filename,content_type,size_bytes,department,module,document_type,reference_date,expires_at,notes,status,checksum,batch_code,physical_location,confidentiality,page_count,version,validation_checklist,updated_at,uploaded_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'{}',?,?,?) RETURNING *",
+        "INSERT INTO files (record_id,storage_key,filename,content_type,size_bytes,department,module,document_type,reference_date,expires_at,notes,status,checksum,batch_code,physical_location,confidentiality,page_count,version,validation_checklist,ocr_text,updated_at,uploaded_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,'{}',?,?,?,?) RETURNING *",
       )
       .bind(
         recordId,
@@ -399,6 +402,7 @@ export async function POST(request: NextRequest) {
         physicalLocation,
         confidentiality,
         pageCount,
+        ocrText,
         now,
         user.userId,
         now,
@@ -612,7 +616,7 @@ export async function PUT(request: NextRequest) {
     );
   const updated = await db
     .prepare(
-      "UPDATE files SET document_type=?,reference_date=?,expires_at=?,notes=?,status=?,batch_code=?,physical_location=?,confidentiality=?,page_count=?,validation_checklist=?,reviewed_by=?,reviewed_at=?,rejection_reason=?,updated_at=? WHERE id=? RETURNING *",
+      "UPDATE files SET document_type=?,reference_date=?,expires_at=?,notes=?,status=?,batch_code=?,physical_location=?,confidentiality=?,page_count=?,validation_checklist=?,ocr_text=?,reviewed_by=?,reviewed_at=?,rejection_reason=?,updated_at=? WHERE id=? RETURNING *",
     )
     .bind(
       String(body.documentType || current.document_type),
@@ -625,6 +629,7 @@ export async function PUT(request: NextRequest) {
       String(body.confidentiality || current.confidentiality),
       Math.max(1, Math.min(5000, Number(body.pageCount) || 1)),
       JSON.stringify(checklist),
+      String(body.ocrText ?? current.ocr_text ?? "").slice(0, 200000),
       user.userId,
       now,
       String(body.rejectionReason || ""),
