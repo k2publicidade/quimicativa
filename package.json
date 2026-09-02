@@ -10,6 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "test:classifier": "node scripts/classifier-test.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
