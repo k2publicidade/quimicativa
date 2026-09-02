@@ -285,7 +285,39 @@ const rules: Rule[] = [
     type: "Extrato bancário",
     module: "DRE e Relatórios",
     department: "financeiro",
-    patterns: [/extrato bancario/, /extrato de conta/, /extrato\s+(?:corrente|poupanca)/],
+    patterns: [
+      /extrato bancario/,
+      /extrato de conta/,
+      /extrato\s+(?:corrente|poupanca)/,
+      /conta corrente/,
+      /conta cheque/,
+      /cheque\s+especial/,
+      /saldo\s+(?:da\s+)?conta/,
+      /lancamentos?\s+(?:da|em)\s+conta/,
+    ],
+  },
+  {
+    type: "Fatura / duplicata",
+    module: "Contas a Pagar",
+    department: "financeiro",
+    patterns: [
+      /conta de (?:luz|energia|agua|gas|telefone|internet)/,
+      /fatura de (?:energia|agua|gas|telefone)/,
+      /consumo\s+de\s+energia/,
+      /fatura\s+de\s+consumo/,
+      /companhia\s+(?:de\s+)?(?:energia|agua|gas)/,
+      /(?:energia\s+eletrica|abastecimento\s+de\s+agua)/,
+    ],
+    extract: (text) => {
+      const fields: ExtractedFields = {};
+      const valor = extractors.money(text);
+      const data = dateAfter(["vencimento", "pagamento"])(text);
+      const numero = findFirst(/(?:n[ºo]|numero|fatura)\s*[:.]?\s*([A-Z0-9][A-Z0-9.\/-]{3,20})/i)(text);
+      if (valor) fields.valor = valor;
+      if (data) fields.vencimento = data;
+      if (numero) fields.numero = numero;
+      return fields;
+    },
   },
   {
     type: "Seguro / apólice",
@@ -443,6 +475,10 @@ const rules: Rule[] = [
       /certificado de analise/,
       /\bcoa\b/,
       /laudo de analise/,
+      /laudo\s+do\s+produto/,
+      /laudo\s+tecnico\s+do\s+produto/,
+      /laudo\s+de\s+qualidade/,
+      /laudo\s+de\s+controle\s+de\s+qualidade/,
       /boletim de qualidade/,
       /resultado\s+de\s+analise/,
       /especificacao\s+(?:e\s+)?(?:metodo|resultado)/,
@@ -506,6 +542,44 @@ const rules: Rule[] = [
   },
 
   // ── RH ────────────────────────────────────────────────────────────────────
+  {
+    type: "Documento de identificação",
+    module: "Funcionários",
+    department: "rh",
+    patterns: [
+      /\bctps\b/,
+      /carteira\s+de\s+trabalho/,
+      /\bcnh\b/,
+      /carteira nacional de habilitacao/,
+      /habilitacao\s+(?:de\s+)?motorista/,
+      /\brg\b.*(?:identidade)?/,
+      /carteira de identidade/,
+      /\bidentidade\b/,
+      /passaporte/,
+      /certificado\s+de\s+reservista/,
+      /registro\s+geral/,
+    ],
+    extract: (text) => {
+      const fields: ExtractedFields = {};
+      const colaborador = extractors.nameAfter([
+        "nome",
+        "titular",
+        "portador",
+        "motorista",
+      ])(text);
+      const numero = findFirst(
+        /(?:n[ºo]|numero|registro)\s*[:.]?\s*([A-Z0-9][A-Z0-9.\/-]{3,20})/i,
+        /\b(\d{2,3}\.\d{3}\.\d{3}[-\s]?\d)\b/,
+      )(text);
+      const validade = dateAfter(["validade", "vencimento"])(text);
+      const cpf = extractors.cpf(text);
+      if (colaborador) fields.colaborador = colaborador;
+      if (numero) fields.numero = numero;
+      if (validade) fields.validade = validade;
+      if (cpf) fields.cpf = cpf;
+      return fields;
+    },
+  },
   {
     type: "Contrato",
     module: "Funcionários",

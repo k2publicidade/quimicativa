@@ -107,6 +107,7 @@ const types = [
   "Holerite",
   "Termo / rescisão",
   "Currículo",
+  "Documento de identificação",
   "Laudo / relatório",
   "Ficha assinada",
   "Rótulo",
