@@ -4,6 +4,7 @@ import { getModuleConfig } from "./module-config";
 import DocumentCenter, { RecordDocuments } from "./DocumentCenter";
 import ProductCenter from "./ProductCenter";
 import PedidosCenter from "./PedidosCenter";
+import FleetCenter from "./FleetCenter";
 
 type Module = {
   name: string;
@@ -142,6 +143,15 @@ const departments: Record<string, Department> = {
         alert: "2 manutenções",
       },
     ],
+  },
+  frota: {
+    code: "FR",
+    name: "Frota",
+    eyebrow: "VEÍCULOS, DOCUMENTOS E MANUTENÇÕES",
+    summary:
+      "Cadastre os caminhões, acompanhe validade de CRLV, seguro e MOPP, e controle as manutenções periódicas por km e por tempo.",
+    color: "#0e8f7a",
+    modules: [],
   },
   embalagem: {
     code: "EM",
@@ -500,6 +510,8 @@ export default function Dashboard() {
             <ProductCenter notify={notify} canExport={profile.role !== "viewer"} />
           ) : active === "pedidos" ? (
             <PedidosCenter notify={notify} canWrite={profile.role !== "viewer"} />
+          ) : active === "frota" ? (
+            <FleetCenter notify={notify} canWrite={profile.role !== "viewer"} />
           ) : selectedModule ? (
             <ModuleWorkspace
               module={selectedModule}
