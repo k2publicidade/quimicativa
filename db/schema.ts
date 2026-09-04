@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -163,3 +163,72 @@ export const licenses = sqliteTable("licenses", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 }, table => [index("idx_licenses_validity_date").on(table.validityDate), index("idx_licenses_status").on(table.status)]);
+
+export const customers = sqliteTable("customers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  companyName: text("company_name").notNull(),
+  tradingName: text("trading_name"),
+  document: text("document").notNull().default(""),
+  stateRegistration: text("state_registration"),
+  street: text("street"),
+  number: text("number"),
+  complement: text("complement"),
+  district: text("district"),
+  city: text("city"),
+  state: text("state"),
+  zipCode: text("zip_code"),
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  segment: text("segment"),
+  lgpdBasis: text("lgpd_basis").notNull().default("Execução de contrato"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_customers_status").on(table.status), index("idx_customers_document").on(table.document)]);
+
+export const orders = sqliteTable("orders", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  number: text("number").notNull().default("").unique(),
+  customerId: integer("customer_id").notNull().references(() => customers.id),
+  orderDate: integer("order_date", { mode: "timestamp" }),
+  deliveryDate: integer("delivery_date", { mode: "timestamp" }),
+  status: text("status").notNull().default("draft"),
+  notes: text("notes"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_orders_customer_id").on(table.customerId), index("idx_orders_status").on(table.status), index("idx_orders_created_at").on(table.createdAt)]);
+
+export const orderItems = sqliteTable("order_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("order_id").notNull().references(() => orders.id),
+  productId: integer("product_id").notNull().references(() => products.id),
+  productName: text("product_name").notNull(),
+  quantity: real("quantity").notNull().default(0),
+  unit: text("unit").notNull().default("L"),
+  unitPriceCents: integer("unit_price_cents").notNull().default(0),
+  lotNumber: text("lot_number"),
+  notes: text("notes"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_order_items_order_id").on(table.orderId), index("idx_order_items_product_id").on(table.productId)]);
+
+export const orderDocuments = sqliteTable("order_documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("order_id").notNull().references(() => orders.id),
+  orderItemId: integer("order_item_id").references(() => orderItems.id),
+  kind: text("kind").notNull(),
+  storageKey: text("storage_key").notNull().unique(),
+  fileName: text("file_name").notNull(),
+  contentType: text("content_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  metadata: text("metadata").notNull().default("{}"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  uploadedBy: text("uploaded_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_order_docs_order_kind").on(table.orderId, table.kind), index("idx_order_docs_item").on(table.orderItemId)]);

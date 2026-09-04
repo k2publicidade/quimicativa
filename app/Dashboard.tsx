@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getModuleConfig } from "./module-config";
 import DocumentCenter, { RecordDocuments } from "./DocumentCenter";
 import ProductCenter from "./ProductCenter";
+import PedidosCenter from "./PedidosCenter";
 
 type Module = {
   name: string;
@@ -58,6 +59,15 @@ const departments: Record<string, Department> = {
     summary:
       "Cadastre produtos, lotes com validade, FISPQ, licenças e fornecedores com alerta antes do prazo.",
     color: "#b0562e",
+    modules: [],
+  },
+  pedidos: {
+    code: "PD",
+    name: "Pedidos",
+    eyebrow: "FLUXO DE PEDIDOS E DOCUMENTAÇÃO",
+    summary:
+      "Cadastre clientes e pedidos e monte o dossiê do pedido: Nota fiscal, boleto, laudos e fichas de risco em um único PDF.",
+    color: "#1d6f9c",
     modules: [],
   },
   rh: {
@@ -488,6 +498,8 @@ export default function Dashboard() {
             <DocumentCenter notify={notify} />
           ) : active === "produtos" ? (
             <ProductCenter notify={notify} canExport={profile.role !== "viewer"} />
+          ) : active === "pedidos" ? (
+            <PedidosCenter notify={notify} canWrite={profile.role !== "viewer"} />
           ) : selectedModule ? (
             <ModuleWorkspace
               module={selectedModule}
