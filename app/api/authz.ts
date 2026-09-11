@@ -1,5 +1,5 @@
-import { getChatGPTUser } from "../chatgpt-auth";
-import { getD1 } from "../../db";
+import { supabaseAdmin } from "../../lib/supabase/admin";
+import { getSupabaseUser } from "../../lib/supabase/server";
 
 export type Actor = {
   userId: string;
@@ -8,27 +8,48 @@ export type Actor = {
   role: "ceo" | "manager" | "operator" | "viewer";
 };
 
+/**
+ * Resolve o ator autenticado a partir da sessao Supabase Auth e do papel
+ * gravado em public.users. O primeiro usuario do sistema vira `ceo`
+ * (bootstrap); os demais entram como `viewer` ate alguem da direcao mudar.
+ *
+ * Mantem a MESMA assinatura de antes (ChatGPT auth), entao as 28 rotas que
+ * usam canWrite/canValidate/canReadConfidential seguem valendo sem alteracao.
+ */
 export async function getActor(): Promise<Actor | null> {
-  const user = await getChatGPTUser();
+  const user = await getSupabaseUser();
   if (!user) return null;
-  const db = getD1(),
-    existing = await db
-      .prepare("SELECT role FROM users WHERE id=?")
-      .bind(user.userId)
-      .first<{ role: Actor["role"] }>();
-  if (existing) return { ...user, role: existing.role };
-  const count = await db
-      .prepare("SELECT COUNT(*) AS total FROM users")
-      .first<{ total: number }>(),
-    role: Actor["role"] = (count?.total ?? 0) === 0 ? "ceo" : "viewer",
-    now = Math.floor(Date.now() / 1000);
-  await db
-    .prepare(
-      "INSERT INTO users (id,email,name,role,created_at) VALUES (?,?,?,?,?)",
-    )
-    .bind(user.userId, user.email, user.displayName, role, now)
-    .run();
-  return { ...user, role };
+
+  const email = user.email ?? "";
+  const displayName =
+    (user.user_metadata?.full_name as string | undefined) ||
+    (user.user_metadata?.name as string | undefined) ||
+    email;
+
+  const db = supabaseAdmin();
+  const { data: existing } = await db
+    .from("users")
+    .select("role, name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (existing) {
+    return {
+      userId: user.id,
+      email,
+      displayName: existing.name || displayName,
+      role: existing.role as Actor["role"],
+    };
+  }
+
+  const { count } = await db
+    .from("users")
+    .select("id", { count: "exact", head: true });
+  const role: Actor["role"] = (count ?? 0) === 0 ? "ceo" : "viewer";
+
+  await db.from("users").insert({ id: user.id, email, name: displayName, role });
+
+  return { userId: user.id, email, displayName, role };
 }
 
 export const canWrite = (actor: Actor) => actor.role !== "viewer";

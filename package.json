@@ -6,15 +6,19 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
-    "build": "vinext build",
-    "start": "vinext start",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "dev:sites": "vinext dev",
+    "build:sites": "vinext build",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "test:classifier": "node scripts/classifier-test.mjs",
     "test:schema": "node --experimental-sqlite scripts/schema-smoke-test.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
     "@types/mapbox-gl": "^3.4.1",
     "drizzle-orm": "0.45.2",
     "mapbox-gl": "^3.30.0",

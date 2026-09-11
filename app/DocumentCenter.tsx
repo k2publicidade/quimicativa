@@ -2,7 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { classifyDocument, classifyXml, labelOf } from "./document-classifier";
 import type { Classification, ExtractedFields } from "./document-classifier";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+// Worker do pdf.js servido como arquivo estatico (o import `?url` e do Vite,
+// nao existe no build do Next.js/Vercel).
+const pdfWorkerUrl = "/pdf.worker.min.mjs";
 
 type DocumentItem = {
   id: number;
