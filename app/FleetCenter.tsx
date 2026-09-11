@@ -54,6 +54,7 @@ type VehicleFull = Vehicle & {
   documents: VDoc[];
   maintenance: VMaint[];
 };
+type TruckRoute = { id: number; vehicleId: number; name: string; code: string; driverName: string; routeDate: string; status: string; loadedKg: number; capacityKg: number | null; occupancy: number | null; loadSummary: { packageType: string; unitWeightKg: number; count: number }[]; stops: { id: number; sequence: number; customerName: string; orderNumber: string; address: string; weightKg: number; packageSummary: string; paymentTerms: string }[] };
 
 const docTypes = [
   "CRLV",
@@ -717,16 +718,18 @@ function VehicleDetailModal({
   onChanged: () => void;
 }) {
   const [full, setFull] = useState<VehicleFull | null>(null);
+  const [routes, setRoutes] = useState<TruckRoute[]>([]);
   const [error, setError] = useState("");
   const [showEdit, setShowEdit] = useState(false);
   const [showDocForm, setShowDocForm] = useState(false);
   const [showMaintForm, setShowMaintForm] = useState(false);
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/vehicles?id=${vehicleId}`);
+      const [r, routesResponse] = await Promise.all([fetch(`/api/vehicles?id=${vehicleId}`), fetch("/api/routes")]);
       if (!r.ok) throw new Error();
       const data = await r.json();
       setFull(data);
+      if (routesResponse.ok) { const routeData = await routesResponse.json(); setRoutes((routeData.routes ?? []).filter((route: TruckRoute) => route.vehicleId === vehicleId)); }
     } catch {
       setError("Não foi possível carregar o veículo.");
     }
@@ -824,6 +827,11 @@ function VehicleDetailModal({
               }}
             />
           )}
+
+          <div className="ord-section truck-routes">
+            <header><div><h4>Rotas e cargas atribuídas</h4><p>Pedidos vinculados automaticamente a este caminhão.</p></div><strong>{routes.length} rota(s)</strong></header>
+            {routes.length ? routes.map(route => <article className="truck-route" key={route.id}><div className="truck-route-heading"><div><strong>{route.name}</strong><small>{route.code} · {route.routeDate} · {route.driverName || "Motorista não definido"}</small></div><span>{route.loadedKg.toLocaleString("pt-BR")} kg{route.capacityKg ? ` · ${route.occupancy ?? 0}%` : ""}</span></div>{route.loadSummary.length > 0 && <div className="truck-load-tags">{route.loadSummary.map(item => <span key={`${item.packageType}-${item.unitWeightKg}`}>{item.count.toLocaleString("pt-BR")} {item.packageType}{item.unitWeightKg ? ` de ${item.unitWeightKg.toLocaleString("pt-BR")} kg` : ""}</span>)}</div>}<div className="truck-stops">{route.stops.map(stop => <div key={stop.id}><b>{stop.sequence}</b><span><strong>{stop.customerName} · {stop.orderNumber}</strong><small>{stop.address || "Endereço não informado"}</small><small>{stop.packageSummary || `${stop.weightKg.toLocaleString("pt-BR")} kg`} · Pagamento: {stop.paymentTerms || "não informado"}</small></span></div>)}</div></article>) : <p className="ord-empty">Nenhuma rota atribuída a este caminhão.</p>}
+          </div>
 
           <div className="ord-section">
             <header>

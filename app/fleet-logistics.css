@@ -1,0 +1,89 @@
+.truck-routes > header > strong {
+  color: #617188;
+  font-size: 11px;
+}
+
+.truck-route {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid #e2e8ef;
+  border-radius: 10px;
+  background: #fbfcfe;
+}
+
+.truck-route-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.truck-route-heading strong,
+.truck-route-heading small,
+.truck-stops span,
+.truck-stops strong,
+.truck-stops small {
+  display: block;
+}
+
+.truck-route-heading strong {
+  color: #26354a;
+  font-size: 12px;
+}
+
+.truck-route-heading small,
+.truck-route-heading > span {
+  margin-top: 3px;
+  color: #77869a;
+  font-size: 9px;
+}
+
+.truck-load-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.truck-load-tags span {
+  padding: 5px 7px;
+  border-radius: 6px;
+  background: #edf4fc;
+  color: #346da9;
+  font-size: 8px;
+}
+
+.truck-stops {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.truck-stops > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding-top: 8px;
+  border-top: 1px solid #edf0f4;
+}
+
+.truck-stops > div > b {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e7f0fc;
+  color: #2876e5;
+  font-size: 9px;
+}
+
+.truck-stops strong {
+  font-size: 9px;
+}
+
+.truck-stops small {
+  margin-top: 3px;
+  color: #7e8b9d;
+  font-size: 8px;
+}

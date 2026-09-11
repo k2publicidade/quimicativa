@@ -57,6 +57,48 @@
       "when": 1788539057375,
       "tag": "0007_cheerful_marvel_zombies",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789139200000,
+      "tag": "0008_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789139300000,
+      "tag": "0009_erp_integrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1789139500000,
+      "tag": "0010_profitability",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1789139600000,
+      "tag": "0011_route_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1789140200000,
+      "tag": "0012_order_logistics",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1789140600000,
+      "tag": "0013_route_origin",
+      "breakpoints": true
     }
   ]
 }

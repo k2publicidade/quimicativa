@@ -30,6 +30,7 @@ type OrderSummary = {
   customerName: string;
   orderDate: string;
   deliveryDate: string;
+  paymentTerms: string;
   status: string;
   notes: string;
   totalCents: number;
@@ -43,6 +44,10 @@ type Item = {
   quantity: number;
   unit: string;
   unitPriceCents: number;
+  packageCount: number;
+  packageType: string;
+  packageUnitWeightKg: number;
+  weightKg: number;
   lotNumber: string;
   notes: string;
   lineTotalCents: number;
@@ -507,14 +512,19 @@ function NewOrderModal({
     quantity: string;
     unit: string;
     priceText: string;
+    packageCount: string;
+    packageType: string;
+    packageUnitWeightKg: string;
+    weightKg: string;
     lotNumber: string;
   };
   const [customerId, setCustomerId] = useState("");
   const [orderDate, setOrderDate] = useState(todayIso());
   const [deliveryDate, setDeliveryDate] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<DraftItem[]>([
-    { key: 1, productId: "", quantity: "1", unit: "L", priceText: "", lotNumber: "" },
+    { key: 1, productId: "", quantity: "1", unit: "L", priceText: "", packageCount: "", packageType: "", packageUnitWeightKg: "", weightKg: "", lotNumber: "" },
   ]);
   const [saving, setSaving] = useState(false);
   const patchItem = (key: number, field: Partial<DraftItem>) =>
@@ -531,6 +541,10 @@ function NewOrderModal({
         quantity: Number(item.quantity.replace(",", ".")),
         unit: item.unit,
         unitPriceCents: centsFromBRL(item.priceText),
+        packageCount: Number(item.packageCount.replace(",", ".") || 0),
+        packageType: item.packageType,
+        packageUnitWeightKg: Number(item.packageUnitWeightKg.replace(",", ".") || 0),
+        weightKg: Number(item.weightKg.replace(",", ".") || 0),
         lotNumber: item.lotNumber,
       }));
     if (!payloadItems.length)
@@ -544,6 +558,7 @@ function NewOrderModal({
           customerId: Number(customerId),
           orderDate,
           deliveryDate,
+          paymentTerms,
           notes,
           items: payloadItems,
         }),
@@ -606,6 +621,10 @@ function NewOrderModal({
                 value={deliveryDate}
                 onChange={(event) => setDeliveryDate(event.target.value)}
               />
+            </div>
+            <div className="ord-field span2">
+              <label htmlFor="nc-payment">Condição de pagamento</label>
+              <input id="nc-payment" value={paymentTerms} onChange={(event) => setPaymentTerms(event.target.value)} placeholder="Ex.: 28 dias, boleto" />
             </div>
           </div>
         </div>
@@ -687,6 +706,22 @@ function NewOrderModal({
                   }
                 />
               </div>
+              <div className="ord-field">
+                <label>Qtd. embalagens</label>
+                <input type="text" inputMode="decimal" value={item.packageCount} onChange={(event) => patchItem(item.key, { packageCount: event.target.value })} placeholder="Ex.: 5" />
+              </div>
+              <div className="ord-field">
+                <label>Tipo de embalagem</label>
+                <input value={item.packageType} onChange={(event) => patchItem(item.key, { packageType: event.target.value })} placeholder="Ex.: bombona" />
+              </div>
+              <div className="ord-field">
+                <label>Peso por embalagem (kg)</label>
+                <input type="text" inputMode="decimal" value={item.packageUnitWeightKg} onChange={(event) => patchItem(item.key, { packageUnitWeightKg: event.target.value })} placeholder="Ex.: 60" />
+              </div>
+              <div className="ord-field">
+                <label>Peso total (kg)</label>
+                <input type="text" inputMode="decimal" value={item.weightKg} onChange={(event) => patchItem(item.key, { weightKg: event.target.value })} placeholder="Ex.: 300" />
+              </div>
               {items.length > 1 && (
                 <div className="ord-field">
                   <button
@@ -723,6 +758,10 @@ function NewOrderModal({
                   quantity: "1",
                   unit: "L",
                   priceText: "",
+                  packageCount: "",
+                  packageType: "",
+                  packageUnitWeightKg: "",
+                  weightKg: "",
                   lotNumber: "",
                 },
               ])
@@ -799,6 +838,7 @@ function OrderDetailModal({
     customerId: string;
     orderDate: string;
     deliveryDate: string;
+    paymentTerms: string;
     status: string;
     notes: string;
   } | null>(null);
@@ -808,6 +848,7 @@ function OrderDetailModal({
         customerId: String(order.customerId),
         orderDate: order.orderDate,
         deliveryDate: order.deliveryDate,
+        paymentTerms: order.paymentTerms,
         status: order.status,
         notes: order.notes,
       });
@@ -926,7 +967,11 @@ function OrderDetailModal({
                       ))}
                     </select>
                   </div>
-                  <div className="ord-field span3">
+                  <div className="ord-field span2">
+                    <label htmlFor="od-payment">Condição de pagamento</label>
+                    <input id="od-payment" disabled={!canWrite} value={header.paymentTerms} onChange={(event) => setHeader({ ...header, paymentTerms: event.target.value })} placeholder="Ex.: 28 dias, boleto" />
+                  </div>
+                  <div className="ord-field span2">
                     <label htmlFor="od-notes">Observações</label>
                     <input
                       id="od-notes"
@@ -1026,8 +1071,12 @@ function ItemsEditor({
     quantity: string;
     unit: string;
     priceText: string;
+    packageCount: string;
+    packageType: string;
+    packageUnitWeightKg: string;
+    weightKg: string;
     lotNumber: string;
-  }>({ productId: "", quantity: "1", unit: "L", priceText: "", lotNumber: "" });
+  }>({ productId: "", quantity: "1", unit: "L", priceText: "", packageCount: "", packageType: "", packageUnitWeightKg: "", weightKg: "", lotNumber: "" });
   useEffect(() => setItems(initialItems), [initialItems]);
   useEffect(() => {
     fetch("/api/products")
@@ -1055,6 +1104,10 @@ function ItemsEditor({
         quantity: item.quantity,
         unit: item.unit,
         unitPriceCents: item.unitPriceCents,
+        packageCount: item.packageCount,
+        packageType: item.packageType,
+        packageUnitWeightKg: item.packageUnitWeightKg,
+        weightKg: item.weightKg,
         lotNumber: item.lotNumber,
         notes: item.notes,
       }));
@@ -1064,6 +1117,10 @@ function ItemsEditor({
           quantity: Number(draft.quantity.replace(",", ".")),
           unit: draft.unit,
           unitPriceCents: centsFromBRL(draft.priceText),
+          packageCount: Number(draft.packageCount.replace(",", ".") || 0),
+          packageType: draft.packageType,
+          packageUnitWeightKg: Number(draft.packageUnitWeightKg.replace(",", ".") || 0),
+          weightKg: Number(draft.weightKg.replace(",", ".") || 0),
           lotNumber: draft.lotNumber,
         });
       }
@@ -1075,7 +1132,7 @@ function ItemsEditor({
       const data = await r.json();
       if (r.ok) {
         notify("Produtos do pedido atualizados");
-        setDraft({ productId: "", quantity: "1", unit: "L", priceText: "", lotNumber: "" });
+        setDraft({ productId: "", quantity: "1", unit: "L", priceText: "", packageCount: "", packageType: "", packageUnitWeightKg: "", weightKg: "", lotNumber: "" });
         onSaved();
       } else notify(data.error || "Não foi possível salvar os produtos");
     } finally {
@@ -1091,6 +1148,8 @@ function ItemsEditor({
               <th>Produto</th>
               <th>Lote</th>
               <th>Qtd.</th>
+              <th>Embalagem</th>
+              <th>Peso</th>
               <th>Valor unit.</th>
               <th>Total</th>
             </tr>
@@ -1105,6 +1164,8 @@ function ItemsEditor({
                 <td>
                   {item.quantity} {item.unit}
                 </td>
+                <td>{item.packageCount > 0 ? `${item.packageCount} ${item.packageType || "volume(s)"}${item.packageUnitWeightKg > 0 ? ` de ${item.packageUnitWeightKg} kg` : ""}` : "—"}</td>
+                <td>{item.weightKg > 0 ? `${item.weightKg.toLocaleString("pt-BR")} kg` : "—"}</td>
                 <td>{fmtBRL(item.unitPriceCents)}</td>
                 <td>{fmtBRL(item.lineTotalCents)}</td>
               </tr>
@@ -1122,6 +1183,10 @@ function ItemsEditor({
               <th>Produto</th>
               <th>Qtd.</th>
               <th>Unid.</th>
+              <th>Qtd. emb.</th>
+              <th>Tipo emb.</th>
+              <th>kg/emb.</th>
+              <th>Peso kg</th>
               <th>Preço unit. (R$)</th>
               <th>Lote</th>
               <th>Total</th>
@@ -1170,6 +1235,10 @@ function ItemsEditor({
                     ))}
                   </select>
                 </td>
+                <td><input type="number" min={0} step="any" style={{ width: 72 }} value={item.packageCount} onChange={(event) => setItems((list) => list.map((row) => row.id === item.id ? { ...row, packageCount: Number(event.target.value) } : row))} /></td>
+                <td><input type="text" style={{ width: 100 }} value={item.packageType} onChange={(event) => setItems((list) => list.map((row) => row.id === item.id ? { ...row, packageType: event.target.value } : row))} /></td>
+                <td><input type="number" min={0} step="any" style={{ width: 72 }} value={item.packageUnitWeightKg} onChange={(event) => setItems((list) => list.map((row) => row.id === item.id ? { ...row, packageUnitWeightKg: Number(event.target.value) } : row))} /></td>
+                <td><input type="number" min={0} step="any" style={{ width: 82 }} value={item.weightKg} onChange={(event) => setItems((list) => list.map((row) => row.id === item.id ? { ...row, weightKg: Number(event.target.value) } : row))} /></td>
                 <td>
                   <input
                     type="text"
@@ -1281,6 +1350,22 @@ function ItemsEditor({
               </option>
             ))}
           </select>
+        </div>
+        <div className="ord-field">
+          <label>Qtd. embalagens</label>
+          <input type="text" inputMode="decimal" value={draft.packageCount} onChange={(event) => setDraft({ ...draft, packageCount: event.target.value })} />
+        </div>
+        <div className="ord-field">
+          <label>Tipo embalagem</label>
+          <input value={draft.packageType} onChange={(event) => setDraft({ ...draft, packageType: event.target.value })} placeholder="Bombona" />
+        </div>
+        <div className="ord-field">
+          <label>Peso por emb. (kg)</label>
+          <input type="text" inputMode="decimal" value={draft.packageUnitWeightKg} onChange={(event) => setDraft({ ...draft, packageUnitWeightKg: event.target.value })} />
+        </div>
+        <div className="ord-field">
+          <label>Peso total (kg)</label>
+          <input type="text" inputMode="decimal" value={draft.weightKg} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} />
         </div>
       </div>
       <button

@@ -5,6 +5,13 @@ import "./module.css";
 import "./documents.css";
 import "./products.css";
 import "./orders.css";
+import "./logistics.css";
+import "./route-overrides.css";
+import "./management.css";
+import "./logistics-enhancements.css";
+import "./crm-enhancements.css";
+import "./fleet-logistics.css";
+import "./management-details.css";
 import "./fleet.css";
 
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });

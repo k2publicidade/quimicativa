@@ -8,6 +8,7 @@ type OrderRow = {
   customer_id: number;
   order_date: number | null;
   delivery_date: number | null;
+  payment_terms: string;
   status: string;
   notes: string | null;
   created_at: number;
@@ -21,6 +22,10 @@ type ItemRow = {
   quantity: number;
   unit: string;
   unit_price_cents: number;
+  package_count: number;
+  package_type: string;
+  package_unit_weight_kg: number;
+  weight_kg: number;
   lot_number: string | null;
   notes: string | null;
   created_at: number;
@@ -95,6 +100,10 @@ export const serializeItem = (row: ItemRow) => ({
   quantity: row.quantity,
   unit: row.unit,
   unitPriceCents: row.unit_price_cents,
+  packageCount: row.package_count,
+  packageType: row.package_type,
+  packageUnitWeightKg: row.package_unit_weight_kg,
+  weightKg: row.weight_kg,
   lotNumber: row.lot_number ?? "",
   notes: row.notes ?? "",
   lineTotalCents: Math.round(row.quantity * row.unit_price_cents),
@@ -111,6 +120,7 @@ export const serializeOrder = (
   customerName,
   orderDate: fmtDate(row.order_date),
   deliveryDate: fmtDate(row.delivery_date),
+  paymentTerms: row.payment_terms ?? "",
   status: row.status,
   notes: row.notes ?? "",
   createdAt: row.created_at,
@@ -237,7 +247,7 @@ export async function GET(request: NextRequest) {
     .all<OrderRow>();
   const ids = orders.results.map((o) => o.id);
   let customers: { id: number; company_name: string }[] = [],
-    itemsAgg: { order_id: number; count: number; total_cents: number }[] = [],
+    itemsAgg: { order_id: number; count: number; total_cents: number; total_weight_kg: number }[] = [],
     docsAgg: { order_id: number; kind: string; order_item_id: number | null }[] = [];
   if (ids.length) {
     const placeholders = ids.map(() => "?").join(",");
@@ -251,11 +261,12 @@ export async function GET(request: NextRequest) {
         .then((r) => r.results),
       db
         .prepare(
-          `SELECT order_id,COUNT(*) AS count,COALESCE(SUM(quantity*unit_price_cents),0) AS total_cents
+          `SELECT order_id,COUNT(*) AS count,COALESCE(SUM(quantity*unit_price_cents),0) AS total_cents,
+             COALESCE(SUM(CASE WHEN weight_kg>0 THEN weight_kg WHEN package_count>0 AND package_unit_weight_kg>0 THEN package_count*package_unit_weight_kg WHEN LOWER(unit) IN ('kg','quilo','quilos') THEN quantity ELSE 0 END),0) AS total_weight_kg
            FROM order_items WHERE order_id IN (${placeholders}) GROUP BY order_id`,
         )
         .bind(...ids)
-        .all<{ order_id: number; count: number; total_cents: number }>()
+        .all<{ order_id: number; count: number; total_cents: number; total_weight_kg: number }>()
         .then((r) => r.results),
       db
         .prepare(
@@ -281,6 +292,7 @@ export async function GET(request: NextRequest) {
       docRows = byDocs.get(row.id) ?? [];
     return serializeOrder(row, byCustomer.get(row.customer_id) ?? "", {
       totalCents: Math.round(agg?.total_cents ?? 0),
+      totalWeightKg: Number(agg?.total_weight_kg ?? 0),
       itemsCount: itemCount,
       progress: computeOrderProgress(itemCount, docRows),
     });
@@ -303,6 +315,10 @@ type ItemInput = {
   quantity: number;
   unit: string;
   unitPriceCents: number;
+  packageCount?: number;
+  packageType?: string;
+  packageUnitWeightKg?: number;
+  weightKg?: number;
   lotNumber?: string;
   notes?: string;
 };
@@ -333,6 +349,10 @@ async function validateItems(db: ReturnType<typeof getD1>, items: ItemInput[]) {
     const price = Number(item.unitPriceCents);
     if (!Number.isFinite(price) || price < 0 || Math.round(price) !== price)
       return { error: "Preço unitário inválido em um dos itens." };
+    for (const value of [item.packageCount, item.packageUnitWeightKg, item.weightKg]) {
+      if (value !== undefined && (!Number.isFinite(Number(value)) || Number(value) < 0))
+        return { error: "Embalagens e peso devem usar valores numéricos não negativos." };
+    }
   }
   return { error: null };
 }
@@ -373,14 +393,15 @@ export async function POST(request: NextRequest) {
     tmp = `TMP-${now}-${Math.floor(Math.random() * 1e6)}`,
     created = await db
       .prepare(
-        `INSERT INTO orders (number,customer_id,order_date,delivery_date,status,notes,created_by,created_at,updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?) RETURNING *`,
+        `INSERT INTO orders (number,customer_id,order_date,delivery_date,payment_terms,status,notes,created_by,created_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING *`,
       )
       .bind(
         tmp,
         customerId,
         dateOrNull(body.orderDate) ?? now,
         dateOrNull(body.deliveryDate),
+        String(body.paymentTerms ?? "").trim(),
         String(body.status ?? "draft"),
         String(body.notes ?? "").trim(),
         actor.userId,
@@ -408,8 +429,8 @@ export async function POST(request: NextRequest) {
       db
         .prepare(
           `INSERT INTO order_items
-           (order_id,product_id,product_name,quantity,unit,unit_price_cents,lot_number,notes,created_at,updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?)`,
+           (order_id,product_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,lot_number,notes,created_at,updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           created.id,
@@ -418,6 +439,10 @@ export async function POST(request: NextRequest) {
           Number(item.quantity),
           String(item.unit || "L"),
           Number(item.unitPriceCents ?? 0),
+          Number(item.packageCount ?? 0),
+          String(item.packageType ?? ""),
+          Number(item.packageUnitWeightKg ?? 0),
+          Number(item.weightKg ?? 0),
           String(item.lotNumber ?? ""),
           String(item.notes ?? ""),
           now,
@@ -540,7 +565,7 @@ export async function PUT(request: NextRequest) {
         statements.push(
           db
             .prepare(
-              `UPDATE order_items SET product_id=?,product_name=?,quantity=?,unit=?,unit_price_cents=?,lot_number=?,notes=?,updated_at=? WHERE id=? AND order_id=?`,
+              `UPDATE order_items SET product_id=?,product_name=?,quantity=?,unit=?,unit_price_cents=?,package_count=?,package_type=?,package_unit_weight_kg=?,weight_kg=?,lot_number=?,notes=?,updated_at=? WHERE id=? AND order_id=?`,
             )
             .bind(
               Number(item.productId),
@@ -548,6 +573,10 @@ export async function PUT(request: NextRequest) {
               Number(item.quantity),
               String(item.unit || "L"),
               Number(item.unitPriceCents ?? 0),
+              Number(item.packageCount ?? byId.get(itemId)?.package_count ?? 0),
+              String(item.packageType ?? byId.get(itemId)?.package_type ?? ""),
+              Number(item.packageUnitWeightKg ?? byId.get(itemId)?.package_unit_weight_kg ?? 0),
+              Number(item.weightKg ?? byId.get(itemId)?.weight_kg ?? 0),
               String(item.lotNumber ?? byId.get(itemId)?.lot_number ?? ""),
               String(item.notes ?? byId.get(itemId)?.notes ?? ""),
               now,
@@ -560,8 +589,8 @@ export async function PUT(request: NextRequest) {
           db
             .prepare(
               `INSERT INTO order_items
-               (order_id,product_id,product_name,quantity,unit,unit_price_cents,lot_number,notes,created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?)`,
+               (order_id,product_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,lot_number,notes,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             )
             .bind(
               id,
@@ -570,6 +599,10 @@ export async function PUT(request: NextRequest) {
               Number(item.quantity),
               String(item.unit || "L"),
               Number(item.unitPriceCents ?? 0),
+              Number(item.packageCount ?? 0),
+              String(item.packageType ?? ""),
+              Number(item.packageUnitWeightKg ?? 0),
+              Number(item.weightKg ?? 0),
               String(item.lotNumber ?? ""),
               String(item.notes ?? ""),
               now,
@@ -592,7 +625,7 @@ export async function PUT(request: NextRequest) {
   statements.push(
     db
       .prepare(
-        "UPDATE orders SET customer_id=?,order_date=?,delivery_date=?,status=?,notes=?,updated_at=? WHERE id=?",
+        "UPDATE orders SET customer_id=?,order_date=?,delivery_date=?,payment_terms=?,status=?,notes=?,updated_at=? WHERE id=?",
       )
       .bind(
         Number(body.customerId ?? current.customer_id),
@@ -600,6 +633,7 @@ export async function PUT(request: NextRequest) {
         body.deliveryDate !== undefined
           ? dateOrNull(body.deliveryDate)
           : current.delivery_date,
+        String(body.paymentTerms ?? current.payment_terms ?? "").trim(),
         status,
         String(body.notes ?? current.notes ?? "").trim(),
         now,

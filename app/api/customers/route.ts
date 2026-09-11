@@ -131,9 +131,8 @@ export async function GET(request: NextRequest) {
       );
     return NextResponse.json({ customer: serializeCustomer(row) });
   }
-  let sql =
-      "SELECT * FROM customers WHERE 1=1",
-    params: (string | number)[] = [];
+  let sql = "SELECT * FROM customers WHERE 1=1";
+  const params: (string | number)[] = [];
   if (q) {
     sql +=
       " AND (company_name LIKE ? OR trading_name LIKE ? OR document LIKE ? OR city LIKE ?)";

@@ -5,6 +5,11 @@ import DocumentCenter, { RecordDocuments } from "./DocumentCenter";
 import ProductCenter from "./ProductCenter";
 import PedidosCenter from "./PedidosCenter";
 import FleetCenter from "./FleetCenter";
+import LogisticsCenter from "./LogisticsCenter";
+import CommercialInsights from "./CommercialInsights";
+import ErpIntegration from "./ErpIntegration";
+import ProfitabilityCenter from "./ProfitabilityCenter";
+import ManagementIndicators from "./ManagementIndicators";
 
 type Module = {
   name: string;
@@ -503,7 +508,7 @@ export default function Dashboard() {
             )}
           </section>
           {active === "dashboard" ? (
-            <ExecutiveView onOpen={switchArea} />
+            <ExecutiveView onOpen={switchArea} notify={notify} canWrite={profile.role !== "viewer"} />
           ) : active === "digitalizacao" ? (
             <DocumentCenter notify={notify} />
           ) : active === "produtos" ? (
@@ -512,6 +517,10 @@ export default function Dashboard() {
             <PedidosCenter notify={notify} canWrite={profile.role !== "viewer"} />
           ) : active === "frota" ? (
             <FleetCenter notify={notify} canWrite={profile.role !== "viewer"} />
+          ) : active === "logistica" ? (
+            <LogisticsCenter notify={notify} canWrite={profile.role !== "viewer"} />
+          ) : selectedModule?.name === "DRE e Relatórios" ? (
+            <ProfitabilityCenter notify={notify} canWrite={profile.role !== "viewer"} />
           ) : selectedModule ? (
             <ModuleWorkspace
               module={selectedModule}
@@ -557,7 +566,7 @@ export default function Dashboard() {
   );
 }
 
-function ExecutiveView({ onOpen }: { onOpen: (key: string) => void }) {
+function ExecutiveView({ onOpen, notify, canWrite }: { onOpen: (key: string) => void; notify: (message: string) => void; canWrite: boolean }) {
   const [data, setData] = useState<{
     metrics: {
       records: number;
@@ -765,6 +774,9 @@ function ExecutiveView({ onOpen }: { onOpen: (key: string) => void }) {
           </div>
         )}
       </section>
+      <CommercialInsights />
+      <ManagementIndicators />
+      <ErpIntegration canWrite={canWrite} notify={notify} />
       <section className="sector-shortcuts">
         <div className="section-title">
           <div>
