@@ -39,3 +39,6 @@ next-env.d.ts
 /outputs/
 /work/
 tsconfig.tsbuildinfo
+
+# logs de migracao
+migracao-*.log
