@@ -47,7 +47,13 @@ export async function getActor(): Promise<Actor | null> {
     .select("id", { count: "exact", head: true });
   const role: Actor["role"] = (count ?? 0) === 0 ? "ceo" : "viewer";
 
-  await db.from("users").insert({ id: user.id, email, name: displayName, role });
+  await db.from("users").insert({
+    id: user.id,
+    email,
+    name: displayName,
+    role,
+    created_at: Math.floor(Date.now() / 1000),
+  });
 
   return { userId: user.id, email, displayName, role };
 }

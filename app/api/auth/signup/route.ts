@@ -2,12 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabase/admin";
 import { getActor } from "../../authz";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 /** Indica se o sistema ainda precisa do primeiro acesso (bootstrap). */
 export async function GET() {
   const { count } = await supabaseAdmin()
     .from("users")
     .select("id", { count: "exact", head: true });
-  return NextResponse.json({ bootstrap: (count ?? 0) === 0 });
+  return NextResponse.json(
+    { bootstrap: (count ?? 0) === 0 },
+    { headers: { "Cache-Control": "no-store, max-age=0" } },
+  );
 }
 
 /**
@@ -65,7 +71,16 @@ export async function POST(request: NextRequest) {
   const role = bootstrap ? "ceo" : "viewer";
   await admin
     .from("users")
-    .upsert({ id: data.user.id, email, name, role }, { onConflict: "id" });
+    .upsert(
+      {
+        id: data.user.id,
+        email,
+        name,
+        role,
+        created_at: Math.floor(Date.now() / 1000),
+      },
+      { onConflict: "id" },
+    );
 
   return NextResponse.json(
     {

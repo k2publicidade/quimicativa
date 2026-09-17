@@ -42,3 +42,5 @@ tsconfig.tsbuildinfo
 
 # logs de migracao
 migracao-*.log
+
+.vercel
