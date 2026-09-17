@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { syncErp } from '../lib/sync-erp-client';
+import ErpOrderDetails from './ErpOrderDetails';
 
 export type Customer = {
   id: number;
@@ -25,6 +27,7 @@ export type Customer = {
 };
 type Step = { key: string; label: string; state: "ok" | "partial" | "pending" };
 type OrderSummary = {
+  erpSnapshot?: Record<string, unknown> | null;
   id: number;
   number: string;
   customerId: number;
@@ -231,7 +234,7 @@ export default function PedidosCenter({
     const syncAndRefresh = async () => {
       if (!canWrite) return;
       try {
-        await fetch("/api/integrations/sync", { method: "POST" });
+        await syncErp();
         if (!disposed) await Promise.all([loadOrders(), loadCustomers()]);
       } catch {
         // A slow/unavailable ERP must not prevent the local order list from rendering.
@@ -961,6 +964,7 @@ function OrderDetailModal({
       ) : (
         <div className="ord-detail">
           {order?.progress && <FlowSteps progress={order.progress} />}
+          {order?.erpSnapshot && <ErpOrderDetails data={order.erpSnapshot} />}
           <div className="ord-section">
             <header>
               <div>

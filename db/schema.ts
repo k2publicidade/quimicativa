@@ -83,6 +83,8 @@ export const auditLog = sqliteTable("audit_log", {
 }, table => [index("idx_audit_entity").on(table.entityType, table.entityId), index("idx_audit_created_at").on(table.createdAt)]);
 
 export const products = sqliteTable("products", {
+  sourceKey: text('source_key').unique(),
+  sourcePayload: text('source_payload'),
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   category: text("category").notNull().default("Outros"),
@@ -165,6 +167,8 @@ export const licenses = sqliteTable("licenses", {
 }, table => [index("idx_licenses_validity_date").on(table.validityDate), index("idx_licenses_status").on(table.status)]);
 
 export const customers = sqliteTable("customers", {
+  sourceKey: text('source_key').unique(),
+  sourcePayload: text('source_payload'),
   id: integer("id").primaryKey({ autoIncrement: true }),
   companyName: text("company_name").notNull(),
   tradingName: text("trading_name"),
@@ -191,6 +195,7 @@ export const customers = sqliteTable("customers", {
 }, table => [index("idx_customers_status").on(table.status), index("idx_customers_document").on(table.document)]);
 
 export const orders = sqliteTable("orders", {
+  sourceKey: text('source_key').unique(),
   id: integer("id").primaryKey({ autoIncrement: true }),
   number: text("number").notNull().default("").unique(),
   customerId: integer("customer_id").notNull().references(() => customers.id),
@@ -206,13 +211,16 @@ export const orders = sqliteTable("orders", {
 }, table => [index("idx_orders_customer_id").on(table.customerId), index("idx_orders_status").on(table.status), index("idx_orders_created_at").on(table.createdAt)]);
 
 export const orderItems = sqliteTable("order_items", {
+  sourceKey: text('source_key').unique(),
+  sourcePayload: text('source_payload'),
+  lineTotalCents: integer('line_total_cents'),
   id: integer("id").primaryKey({ autoIncrement: true }),
   orderId: integer("order_id").notNull().references(() => orders.id),
   productId: integer("product_id").notNull().references(() => products.id),
   productName: text("product_name").notNull(),
   quantity: real("quantity").notNull().default(0),
   unit: text("unit").notNull().default("L"),
-  unitPriceCents: integer("unit_price_cents").notNull().default(0),
+  unitPriceCents: real("unit_price_cents").notNull().default(0),
   packageCount: real("package_count").notNull().default(0),
   packageType: text("package_type").notNull().default(""),
   packageUnitWeightKg: real("package_unit_weight_kg").notNull().default(0),

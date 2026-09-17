@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getD1 } from "../../../db";
 import { canWrite, getActor } from "../authz";
+import { erpTotals, snapshot } from '../../../lib/vhsys';
 
 type OrderRow = {
+  source_payload?: unknown;
   id: number;
   number: string;
   customer_id: number;
@@ -15,6 +17,7 @@ type OrderRow = {
   updated_at: number;
 };
 type ItemRow = {
+  line_total_cents?: number | null;
   id: number;
   order_id: number;
   product_id: number;
@@ -108,7 +111,7 @@ export const serializeItem = (row: ItemRow) => ({
   volumeM3: row.volume_m3,
   lotNumber: row.lot_number ?? "",
   notes: row.notes ?? "",
-  lineTotalCents: Math.round(row.quantity * row.unit_price_cents),
+  lineTotalCents: row.line_total_cents ?? Math.round(row.quantity * row.unit_price_cents),
 });
 
 export const serializeOrder = (
@@ -128,6 +131,7 @@ export const serializeOrder = (
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   ...extra,
+  ...(erpTotals(row.source_payload) ?? {}),
 });
 
 // Etapas do fluxo: Nota fiscal → Boleto → Laudo → Ficha de risco
@@ -238,6 +242,7 @@ export async function GET(request: NextRequest) {
         customerCity: customer?.city ?? "",
         customerState: customer?.state ?? "",
         totalCents,
+        erpSnapshot: snapshot(row.source_payload),
         itemsCount: items.results.length,
         progress,
       }),

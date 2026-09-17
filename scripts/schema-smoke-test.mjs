@@ -10,9 +10,9 @@ for (const migration of migrations) {
 }
 
 const requiredColumns = {
-  customers: ["receiving_window"],
-  orders: ["payment_terms"],
-  order_items: ["package_count", "package_type", "package_unit_weight_kg", "weight_kg", "volume_m3"],
+  customers: ["receiving_window", "source_key", "source_payload"],
+  orders: ["payment_terms", "source_key", "source_payload"],
+  order_items: ["package_count", "package_type", "package_unit_weight_kg", "weight_kg", "volume_m3", "source_key", "line_total_cents"],
   vehicles: ["capacity_kg", "capacity_m3"],
   drivers: ["name", "license_expiry", "mopp_expiry", "status"],
   routes: ["driver_id", "origin_address", "planned_km", "estimated_cost_cents"],

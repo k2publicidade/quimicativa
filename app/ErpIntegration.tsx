@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { syncErp } from '../lib/sync-erp-client';
 
 type Config = {
   provider: string;
@@ -69,9 +70,7 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
   const sync = async () => {
     setSaving(true);
     try {
-      const response = await fetch("/api/integrations/sync", { method: "POST" });
-      const data = await response.json() as { error?: string; message?: string };
-      if (!response.ok) throw new Error(data.error || "Falha na sincronização");
+      const data = await syncErp(message => setConfig(current => ({...current,lastSyncStatus:'running',lastSyncMessage:message})));
       const message = data.message || "Sincronização concluída";
       notify(message);
       setConfig(current => ({
@@ -82,6 +81,7 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
       }));
     } catch (error) {
       notify(error instanceof Error ? error.message : "Falha na sincronização");
+      setConfig(current=>({...current,lastSyncStatus:'error',lastSyncMessage:error instanceof Error?error.message:'Falha na sincronização'}));
     } finally {
       setSaving(false);
     }

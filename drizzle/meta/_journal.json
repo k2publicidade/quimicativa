@@ -134,6 +134,18 @@
       "when": 1789673080983,
       "tag": "0018_vhsys_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 19, "version": "6", "when": 1789673080984,
+      "tag": "0019_erp_finance_paths", "breakpoints": true
+    },
+    {
+      "idx": 20, "version": "6", "when": 1789673080985,
+      "tag": "0020_order_source_payload", "breakpoints": true
+    },
+    {
+      "idx": 21, "version": "6", "when": 1789673080986,
+      "tag": "0021_order_erp_details", "breakpoints": true
     }
   ]
 }
