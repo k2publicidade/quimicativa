@@ -615,6 +615,7 @@ create index if not exists idx_payables_due on payables(due_date);
 -- ---------------------------------------------------------------------------
 -- 7. RH (ESTRUTURADO)
 -- ---------------------------------------------------------------------------
+alter table orders add column if not exists source_payload jsonb;
 create table if not exists employees (
   id             uuid primary key default gen_random_uuid(),
   full_name      text not null,

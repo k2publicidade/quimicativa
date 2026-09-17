@@ -17,7 +17,7 @@ const normalizedItems = (order: Record<string, unknown>): NormalizedItem[] => {
   if (!Array.isArray(source)) return [];
   return source.flatMap(raw => {
     if (!raw || typeof raw !== "object") return [];
-    const item = raw as Record<string, unknown>, productName = stringValue(item, "productName", "name", "product", "produto"), quantity = finite(value(item, "quantity", "qty", "quantidade"));
+    const item = raw as Record<string, unknown>, productName = stringValue(item, "productName", "name", "product", "produto", "descricao_produto", "nome_produto"), quantity = finite(value(item, "quantity", "qty", "quantidade", "quantidade_produto", "qtde"));
     return productName && quantity > 0 ? [{ raw: item, productName, quantity }] : [];
   });
 };
@@ -125,7 +125,8 @@ export async function POST(request: NextRequest) {
       const orderDate = date(value(order, "orderDate", "date", "dataPedido", "data_pedido")) ?? timestamp;
       const paymentTerms = stringValue(order, "paymentTerms", "paymentCondition", "condicaoPagamento", "prazoPagamento", "condicao_pagamento");
       const notes = stringValue(order, "notes", "observations", "observacoes", "obs_pedido", "obs_interno_pedido");
-      const orderRow = existing ? await db.prepare("UPDATE orders SET customer_id=?,order_date=?,delivery_date=?,payment_terms=?,notes=?,updated_at=? WHERE id=? RETURNING id").bind(customer.id, orderDate, deliveryDate, paymentTerms, notes, timestamp, existing.id).first<{ id: number }>() : await db.prepare("INSERT INTO orders (number,customer_id,order_date,delivery_date,payment_terms,status,notes,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id").bind(number, customer.id, orderDate, deliveryDate, paymentTerms, "active", notes, actor.userId, timestamp, timestamp).first<{ id: number }>();
+      const sourcePayload = JSON.stringify(order);
+      const orderRow = existing ? await db.prepare("UPDATE orders SET customer_id=?,order_date=?,delivery_date=?,payment_terms=?,notes=?,source_payload=?,updated_at=? WHERE id=? RETURNING id").bind(customer.id, orderDate, deliveryDate, paymentTerms, notes, sourcePayload, timestamp, existing.id).first<{ id: number }>() : await db.prepare("INSERT INTO orders (number,customer_id,order_date,delivery_date,payment_terms,status,notes,source_payload,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id").bind(number, customer.id, orderDate, deliveryDate, paymentTerms, "active", notes, sourcePayload, actor.userId, timestamp, timestamp).first<{ id: number }>();
       if (orderRow) {
         const validItems = normalizedItems(order);
         if (validItems.length) {
@@ -136,9 +137,9 @@ export async function POST(request: NextRequest) {
             if (!product) product = await db.prepare("INSERT INTO products (name,category,status,created_at,updated_at) VALUES (?,'ERP','active',?,?) RETURNING id").bind(productName, timestamp, timestamp).first<{ id: number }>();
             if (!product) continue;
             const quantity = normalized.quantity;
-            const centsValue = value(item, "unitPriceCents", "precoCentavos"), currencyValue = value(item, "unitPrice", "price", "preco");
+            const centsValue = value(item, "unitPriceCents", "precoCentavos", "valor_unitario_centavos"), currencyValue = value(item, "unitPrice", "price", "preco", "valor_unitario", "valor_unitario_produto", "preco_venda");
             const unitPriceCents = centsValue !== undefined ? Math.round(finite(centsValue)) : Math.round(finite(currencyValue) * 100);
-            itemStatements.push(db.prepare("INSERT INTO order_items (order_id,product_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,volume_m3,lot_number,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(orderRow.id, product.id, productName, quantity, stringValue(item, "unit", "unidade") || "un", unitPriceCents, Math.max(0, finite(value(item, "packageCount", "volumes", "quantidadeEmbalagens"))), stringValue(item, "packageType", "packaging", "embalagem"), Math.max(0, finite(value(item, "packageUnitWeightKg", "pesoEmbalagemKg"))), Math.max(0, finite(value(item, "weightKg", "totalWeightKg", "pesoKg", "pesoTotal"))), Math.max(0, finite(value(item, "volumeM3", "totalVolumeM3", "cubagemM3", "volumeTotalM3"))), stringValue(item, "lotNumber", "lot", "lote"), "Importado do ERP", timestamp, timestamp));
+            itemStatements.push(db.prepare("INSERT INTO order_items (order_id,product_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,volume_m3,lot_number,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(orderRow.id, product.id, productName, quantity, stringValue(item, "unit", "unidade", "unidade_medida") || "un", unitPriceCents, Math.max(0, finite(value(item, "packageCount", "volumes", "quantidadeEmbalagens"))), stringValue(item, "packageType", "packaging", "embalagem"), Math.max(0, finite(value(item, "packageUnitWeightKg", "pesoEmbalagemKg"))), Math.max(0, finite(value(item, "weightKg", "totalWeightKg", "pesoKg", "pesoTotal", "peso_bruto", "peso_liquido"))), Math.max(0, finite(value(item, "volumeM3", "totalVolumeM3", "cubagemM3", "volumeTotalM3"))), stringValue(item, "lotNumber", "lot", "lote"), stringValue(item, "notes", "observations", "observacoes", "obs") || "Importado do ERP", timestamp, timestamp));
           }
           if (itemStatements.length > 1) await db.batch(itemStatements);
           else issues.push(`Pedido ${number}: nenhum produto pôde ser vinculado.`);

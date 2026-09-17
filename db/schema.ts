@@ -199,6 +199,7 @@ export const orders = sqliteTable("orders", {
   paymentTerms: text("payment_terms").notNull().default(""),
   status: text("status").notNull().default("draft"),
   notes: text("notes"),
+  sourcePayload: text("source_payload"),
   createdBy: text("created_by").references(() => users.id),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
