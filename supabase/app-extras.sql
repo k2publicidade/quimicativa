@@ -92,6 +92,9 @@ alter table customers add column if not exists receiving_window text not null de
 alter table route_stops add column if not exists receiving_window text not null default '';
 alter table erp_integrations add column if not exists secret_api_token text;
 alter table erp_integrations add column if not exists customers_path text not null default '/clientes';
+alter table erp_integrations add column if not exists goods_receipts_path text not null default '/entradas';
+alter table erp_integrations add column if not exists invoices_path text not null default '/notas-fiscais';
+alter table erp_integrations add column if not exists receivables_path text not null default '/contas-a-receber';
 
 -- ---------------------------------------------------------------------------
 do $$

@@ -7,6 +7,9 @@ type Config = {
   baseUrl: string;
   ordersPath: string;
   customersPath: string;
+  goodsReceiptsPath: string;
+  invoicesPath: string;
+  receivablesPath: string;
   apiToken?: string;
   secretApiToken?: string;
   active: boolean;
@@ -22,6 +25,9 @@ const emptyConfig: Config = {
   ordersPath: "/orders",
   active: false,
   customersPath: "/clientes",
+  goodsReceiptsPath: "/entradas",
+  invoicesPath: "/notas-fiscais",
+  receivablesPath: "/contas-a-receber",
   lastSyncAt: null,
   lastSyncStatus: null,
   lastSyncMessage: null,
@@ -110,6 +116,11 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
       <div className="form-row">
         <label>Caminho dos pedidos<input required value={config.ordersPath} onChange={event => setConfig({ ...config, ordersPath: event.target.value })} placeholder="/pedidos" /></label>
         <label>Caminho dos clientes<input required value={config.customersPath} onChange={event => setConfig({ ...config, customersPath: event.target.value })} placeholder="/clientes" /></label>
+      </div>
+      <div className="form-row">
+        <label>Entrada de mercadoria<input required value={config.goodsReceiptsPath} onChange={event => setConfig({ ...config, goodsReceiptsPath: event.target.value })} placeholder="/entradas" /></label>
+        <label>Notas fiscais<input required value={config.invoicesPath} onChange={event => setConfig({ ...config, invoicesPath: event.target.value })} placeholder="/notas-fiscais" /></label>
+        <label>Contas a receber<input required value={config.receivablesPath} onChange={event => setConfig({ ...config, receivablesPath: event.target.value })} placeholder="/contas-a-receber" /></label>
       </div>
       <div className="form-row">
         <label>Access token<input type="password" value={config.apiToken ?? ""} onChange={event => setConfig({ ...config, apiToken: event.target.value })} placeholder="Deixe em branco para manter" autoComplete="new-password" /></label>
