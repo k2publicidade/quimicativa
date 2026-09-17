@@ -49,7 +49,7 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
       });
-      const data = await response.json() as { error?: string; integration?: Config };
+      const data = await response.json().catch(() => ({})) as { error?: string; integration?: Config };
       if (!response.ok || !data.integration) throw new Error(data.error || "Resposta inválida ao salvar a integração");
       setConfig(data.integration);
       notify("Integração com ERP salva");
