@@ -43,6 +43,12 @@ const fetchVhsys = async (baseUrl: string, path: string, access: string, secret:
   }
   return rows;
 };
+const fetchVhsysDetail = async (baseUrl: string, path: string, access: string, secret: string) => {
+  const url = new URL(`${baseUrl.replace(/\/+$/, "")}${path}`);
+  const response = await fetch(url, { headers: { Accept: "application/json", "access-token": access, "secret-access-token": secret, "Cache-Control": "no-cache", "User-Agent": "Quimicativa/1.0" }, redirect: "error", signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new Error(`vhsys respondeu HTTP ${response.status}`);
+  return vhsysRows(await response.json(), "produto");
+};
 
 export async function POST(request: NextRequest) {
   const actor = await getActor();
@@ -68,6 +74,16 @@ export async function POST(request: NextRequest) {
     if (contentLength > 10_000_000) throw new Error("Resposta do ERP excede o limite de 10 MB.");
     const payload = isVhsys ? null : await response!.json() as unknown;
     const vhsysOrders = isVhsys ? await fetchVhsys(config.base_url, config.orders_path || "/pedidos", config.api_token!, config.secret_api_token!) : [];
+    if (isVhsys) {
+      for (const raw of vhsysOrders) {
+        if (!raw || typeof raw !== "object") continue;
+        const order = raw as Record<string, unknown>;
+        const remoteId = stringValue(order, "id_ped", "id_pedido", "id");
+        if (!remoteId || normalizedItems(order).length) continue;
+        const products = await fetchVhsysDetail(config.base_url, `/pedidos/${encodeURIComponent(remoteId)}/produtos`, config.api_token!, config.secret_api_token!);
+        if (products.length) order.items = products;
+      }
+    }
     const remoteOrders: unknown[] = isVhsys ? vhsysOrders : Array.isArray(payload)
       ? payload
       : payload && typeof payload === "object" && Array.isArray((payload as Record<string, unknown>).orders)
@@ -137,7 +153,7 @@ export async function POST(request: NextRequest) {
             if (!product) product = await db.prepare("INSERT INTO products (name,category,status,created_at,updated_at) VALUES (?,'ERP','active',?,?) RETURNING id").bind(productName, timestamp, timestamp).first<{ id: number }>();
             if (!product) continue;
             const quantity = normalized.quantity;
-            const centsValue = value(item, "unitPriceCents", "precoCentavos", "valor_unitario_centavos"), currencyValue = value(item, "unitPrice", "price", "preco", "valor_unitario", "valor_unitario_produto", "preco_venda");
+            const centsValue = value(item, "unitPriceCents", "precoCentavos", "valor_unitario_centavos"), currencyValue = value(item, "unitPrice", "price", "preco", "valor_unitario", "valor_unitario_produto", "valor_unit_produto", "preco_venda");
             const unitPriceCents = centsValue !== undefined ? Math.round(finite(centsValue)) : Math.round(finite(currencyValue) * 100);
             itemStatements.push(db.prepare("INSERT INTO order_items (order_id,product_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,volume_m3,lot_number,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(orderRow.id, product.id, productName, quantity, stringValue(item, "unit", "unidade", "unidade_medida") || "un", unitPriceCents, Math.max(0, finite(value(item, "packageCount", "volumes", "quantidadeEmbalagens"))), stringValue(item, "packageType", "packaging", "embalagem"), Math.max(0, finite(value(item, "packageUnitWeightKg", "pesoEmbalagemKg"))), Math.max(0, finite(value(item, "weightKg", "totalWeightKg", "pesoKg", "pesoTotal", "peso_bruto", "peso_liquido"))), Math.max(0, finite(value(item, "volumeM3", "totalVolumeM3", "cubagemM3", "volumeTotalM3"))), stringValue(item, "lotNumber", "lot", "lote"), stringValue(item, "notes", "observations", "observacoes", "obs") || "Importado do ERP", timestamp, timestamp));
           }
