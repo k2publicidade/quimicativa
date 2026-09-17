@@ -14,9 +14,24 @@ if(mode==='migrate') {
   if(result.error) throw result.error;
   console.log('Migração aditiva aplicada.');
 } else {
-  if(mode!=='all'&&mode!=='verify'&&!/^\d+$/.test(mode||'')) throw Error('Informe um ID remoto, verify ou all.');
+  if(mode!=='all'&&mode!=='repair'&&mode!=='verify'&&!/^\d+$/.test(mode||'')) throw Error('Informe um ID remoto, repair, verify ou all.');
   const built=await build({entryPoints:['lib/vhsys-sync.ts'],bundle:true,write:false,platform:'node',format:'esm'});
   const {syncVhsysBatch}=await import('data:text/javascript;base64,'+Buffer.from(built.outputFiles[0].text).toString('base64'));
+  if(mode==='repair') {
+    const {data:orders,error}=await s.from('orders').select('number,source_payload').range(0,9999);
+    if(error) throw error;
+    let repaired=0;
+    const issues=[];
+    for(const o of orders) {
+      const p=typeof o.source_payload==='string'?JSON.parse(o.source_payload):o.source_payload;
+      if(!p?.id_ped || p._importVersion===2) continue;
+      const result=await syncVhsysBatch(s,config,{remoteId:String(p.id_ped),force:true});
+      repaired+=result.imported;issues.push(...result.issues);
+      console.log(JSON.stringify({number:o.number,imported:result.imported,issues:result.issues}));
+    }
+    console.log(JSON.stringify({repaired,issues}));
+    process.exit(issues.length?1:0);
+  }
   if(mode==='verify') {
     const key=`vhsys:${config.id}:51105940`;
     const {data:o,error:e}=await s.from('orders').select('id,customer_id,source_payload').eq('source_key',key).single();

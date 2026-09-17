@@ -744,7 +744,7 @@ function NewOrderModal({
                     patchItem(item.key, { unit: event.target.value })
                   }
                 >
-                  {units.map((unit) => (
+                  {Array.from(new Set([item.unit, ...units])).map((unit) => (
                     <option key={unit} value={unit}>
                       {unit}
                     </option>
@@ -1312,7 +1312,7 @@ function ItemsEditor({
                       )
                     }
                   >
-                    {units.map((unit) => (
+                    {Array.from(new Set([item.unit, ...units])).map((unit) => (
                       <option key={unit} value={unit}>
                         {unit}
                       </option>
