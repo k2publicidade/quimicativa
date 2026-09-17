@@ -695,6 +695,8 @@ create table if not exists erp_integrations (
   base_url          text not null,
   orders_path       text not null default '/orders',
   api_token         text,
+  secret_api_token  text,
+  customers_path    text not null default '/clientes',
   active            boolean not null default false,
   last_sync_at      timestamptz,
   last_sync_status  text,

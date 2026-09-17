@@ -316,6 +316,8 @@ CREATE TABLE "erp_integrations" (
  "base_url" text NOT NULL,
  "orders_path" text DEFAULT '/orders' NOT NULL,
  "api_token" text,
+ "secret_api_token" text,
+ "customers_path" text DEFAULT '/clientes' NOT NULL,
  "active" bigint DEFAULT 0 NOT NULL,
  "last_sync_at" bigint,
  "last_sync_status" text,

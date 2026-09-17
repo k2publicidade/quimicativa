@@ -6,7 +6,9 @@ type Config = {
   provider: string;
   baseUrl: string;
   ordersPath: string;
+  customersPath: string;
   apiToken?: string;
+  secretApiToken?: string;
   active: boolean;
   lastSyncAt: number | null;
   lastSyncStatus: string | null;
@@ -19,6 +21,7 @@ const emptyConfig: Config = {
   baseUrl: "",
   ordersPath: "/orders",
   active: false,
+  customersPath: "/clientes",
   lastSyncAt: null,
   lastSyncStatus: null,
   lastSyncMessage: null,
@@ -101,12 +104,16 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
     </div>
     {canWrite ? <form className="erp-form" onSubmit={save}>
       <div className="form-row">
-        <label>Provedor<input value={config.provider} onChange={event => setConfig({ ...config, provider: event.target.value })} placeholder="REST, Omie, Bling..." /></label>
-        <label>Endpoint base<input type="url" required value={config.baseUrl} onChange={event => setConfig({ ...config, baseUrl: event.target.value })} placeholder="https://erp.empresa.com/api" /></label>
+        <label>Provedor<input value={config.provider} onChange={event => setConfig({ ...config, provider: event.target.value })} placeholder="vhsys" /></label>
+        <label>Endpoint base<input type="url" required value={config.baseUrl} onChange={event => setConfig({ ...config, baseUrl: event.target.value })} placeholder="https://api.vhsys.com/v2" /></label>
       </div>
       <div className="form-row">
-        <label>Caminho dos pedidos<input required value={config.ordersPath} onChange={event => setConfig({ ...config, ordersPath: event.target.value })} placeholder="/orders" /></label>
-        <label>Token de API<input type="password" value={config.apiToken ?? ""} onChange={event => setConfig({ ...config, apiToken: event.target.value })} placeholder="Deixe em branco para manter" autoComplete="new-password" /></label>
+        <label>Caminho dos pedidos<input required value={config.ordersPath} onChange={event => setConfig({ ...config, ordersPath: event.target.value })} placeholder="/pedidos" /></label>
+        <label>Caminho dos clientes<input required value={config.customersPath} onChange={event => setConfig({ ...config, customersPath: event.target.value })} placeholder="/clientes" /></label>
+      </div>
+      <div className="form-row">
+        <label>Access token<input type="password" value={config.apiToken ?? ""} onChange={event => setConfig({ ...config, apiToken: event.target.value })} placeholder="Deixe em branco para manter" autoComplete="new-password" /></label>
+        <label>Secret access token<input type="password" value={config.secretApiToken ?? ""} onChange={event => setConfig({ ...config, secretApiToken: event.target.value })} placeholder="Deixe em branco para manter" autoComplete="new-password" /></label>
       </div>
       <label className="erp-check"><input type="checkbox" checked={config.active} onChange={event => setConfig({ ...config, active: event.target.checked })} /> Ativar sincronização</label>
       <div className="erp-actions">

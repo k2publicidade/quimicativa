@@ -5,7 +5,7 @@ import { getD1 } from "../../../../db";
 import { canWrite, getActor } from "../../authz";
 import { externalErpUrl } from "../url-safety";
 
-type Config = { id: number; provider: string; base_url: string; orders_path: string; api_token: string | null };
+type Config = { id: number; provider: string; base_url: string; orders_path: string; customers_path: string; api_token: string | null; secret_api_token: string | null };
 const now = () => Math.floor(Date.now() / 1000);
 const value = (obj: Record<string, unknown>, ...keys: string[]) => keys.map(key => obj[key]).find(item => item !== undefined && item !== null && item !== "");
 const stringValue = (obj: Record<string, unknown>, ...keys: string[]) => String(value(obj, ...keys) ?? "").trim();
@@ -13,13 +13,35 @@ const date = (input: unknown) => { const parsed = new Date(String(input || ""));
 const finite = (input: unknown, fallback = 0) => { const parsed = Number(input); return Number.isFinite(parsed) ? parsed : fallback; };
 type NormalizedItem = { raw: Record<string, unknown>; productName: string; quantity: number };
 const normalizedItems = (order: Record<string, unknown>): NormalizedItem[] => {
-  const source = value(order, "items", "products", "itens");
+  const source = value(order, "items", "products", "itens", "itens_pedido", "produtos");
   if (!Array.isArray(source)) return [];
   return source.flatMap(raw => {
     if (!raw || typeof raw !== "object") return [];
     const item = raw as Record<string, unknown>, productName = stringValue(item, "productName", "name", "product", "produto"), quantity = finite(value(item, "quantity", "qty", "quantidade"));
     return productName && quantity > 0 ? [{ raw: item, productName, quantity }] : [];
   });
+};
+const vhsysRows = (payload: unknown, singular: string): unknown[] => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  const obj = payload as Record<string, unknown>;
+  if (Array.isArray(obj.data)) return obj.data.flatMap(item => {
+    if (!item || typeof item !== "object") return [];
+    const nested = Object.entries(item as Record<string, unknown>).find(([key, value]) => key.trim().toLowerCase().startsWith(singular) && Array.isArray(value));
+    return nested ? nested[1] as unknown[] : [item];
+  }).filter(item => Boolean(item && typeof item === "object"));
+  if (Array.isArray(obj.results)) return obj.results;
+  return [];
+};
+const fetchVhsys = async (baseUrl: string, path: string, access: string, secret: string) => {
+  const rows: unknown[] = [];
+  for (let offset = 0; offset < 5000; offset += 100) {
+    const url = new URL(`${baseUrl.replace(/\/+$/, "")}${path}`); url.searchParams.set("limit", "100"); url.searchParams.set("offset", String(offset));
+    const response = await fetch(url, { headers: { Accept: "application/json", "access-token": access, "secret-access-token": secret, "Cache-Control": "no-cache", "User-Agent": "Quimicativa/1.0" }, redirect: "error", signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`vhsys respondeu HTTP ${response.status}`);
+    const page = vhsysRows(await response.json(), path.includes("clientes") ? "cliente" : "pedido"); rows.push(...page); if (page.length < 100) break;
+  }
+  return rows;
 };
 
 export async function POST(request: NextRequest) {
@@ -29,17 +51,24 @@ export async function POST(request: NextRequest) {
   const db = getD1(), config = await db.prepare("SELECT * FROM erp_integrations WHERE active=1 ORDER BY id DESC LIMIT 1").first<Config>();
   if (!config) return NextResponse.json({ error: "Configure e ative a integração com o ERP antes de sincronizar." }, { status: 400 });
   try {
+    let vhsysCustomers: unknown[] = [];
+    const isVhsys = config.provider.toLowerCase() === "vhsys" || config.base_url.includes("api.vhsys.com");
+    if (isVhsys) {
+      if (!config.api_token || !config.secret_api_token) throw new Error("Informe o access token e o secret access token da vhsys.");
+      vhsysCustomers = await fetchVhsys(config.base_url, config.customers_path || "/clientes", config.api_token, config.secret_api_token);
+    }
     const { endpoint } = externalErpUrl(config.base_url, config.orders_path);
-    const response = await fetch(endpoint, {
+    const response = isVhsys ? null : await fetch(endpoint, {
       headers: { Accept: "application/json", ...(config.api_token ? { Authorization: `Bearer ${config.api_token}` } : {}) },
       redirect: "error",
       signal: AbortSignal.timeout(30_000),
     });
-    if (!response.ok) throw new Error(`ERP respondeu HTTP ${response.status}`);
-    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (!isVhsys && !response?.ok) throw new Error(`ERP respondeu HTTP ${response?.status}`);
+    const contentLength = Number(response?.headers.get("content-length") || 0);
     if (contentLength > 10_000_000) throw new Error("Resposta do ERP excede o limite de 10 MB.");
-    const payload = await response.json() as unknown;
-    const remoteOrders: unknown[] = Array.isArray(payload)
+    const payload = isVhsys ? null : await response!.json() as unknown;
+    const vhsysOrders = isVhsys ? await fetchVhsys(config.base_url, config.orders_path || "/pedidos", config.api_token!, config.secret_api_token!) : [];
+    const remoteOrders: unknown[] = isVhsys ? vhsysOrders : Array.isArray(payload)
       ? payload
       : payload && typeof payload === "object" && Array.isArray((payload as Record<string, unknown>).orders)
         ? (payload as { orders: unknown[] }).orders
@@ -47,21 +76,31 @@ export async function POST(request: NextRequest) {
           ? (payload as { data: unknown[] }).data
           : payload && typeof payload === "object" && Array.isArray((payload as Record<string, unknown>).results)
             ? (payload as { results: unknown[] }).results
-        : [];
-    if (!Array.isArray(payload) && !remoteOrders.length) throw new Error("O ERP não retornou uma lista de pedidos reconhecível.");
+      : [];
+    if (!isVhsys && !Array.isArray(payload) && !remoteOrders.length) throw new Error("O ERP não retornou uma lista de pedidos reconhecível.");
     if (remoteOrders.length > 5000) throw new Error("O ERP retornou mais de 5.000 pedidos em uma única sincronização.");
     const previewRows = remoteOrders.flatMap(raw => {
       if (!raw || typeof raw !== "object") return [];
       const order = raw as Record<string, unknown>, customerRaw = (value(order, "customer", "client", "cliente") as Record<string, unknown> | undefined) ?? order;
-      return [{ number: stringValue(order, "number", "orderNumber", "id", "codigo"), customerName: stringValue(customerRaw, "companyName", "name", "razaoSocial", "nome", "customerName"), deliveryDate: String(value(order, "deliveryDate", "expectedDelivery", "dataEntrega") ?? ""), paymentTerms: stringValue(order, "paymentTerms", "paymentCondition", "condicaoPagamento", "prazoPagamento"), items: normalizedItems(order).length }];
+      return [{ number: stringValue(order, "number", "orderNumber", "id_pedido", "id", "codigo_pedido"), customerName: stringValue(customerRaw, "companyName", "name", "razaoSocial", "nome", "customerName", "nome_cliente", "razao_cliente"), deliveryDate: String(value(order, "deliveryDate", "expectedDelivery", "dataEntrega", "data_entrega_pedido") ?? ""), paymentTerms: stringValue(order, "paymentTerms", "paymentCondition", "condicaoPagamento", "prazoPagamento", "forma_pagamento"), items: normalizedItems(order).length }];
     });
     if (request.nextUrl.searchParams.get("preview") === "1") return NextResponse.json({ preview: true, totalRecords: remoteOrders.length, validRecords: previewRows.filter(item => item.number && item.customerName && item.items > 0).length, sample: previewRows.slice(0, 10) });
     const imported: number[] = [], timestamp = now(), issues: string[] = [];
+    for (const raw of vhsysCustomers) {
+      if (!raw || typeof raw !== "object") continue;
+      const customer = raw as Record<string, unknown>, name = stringValue(customer, "razao_cliente", "fantasia_cliente", "nome_cliente", "name");
+      if (!name) continue;
+      const document = stringValue(customer, "cnpj_cliente", "cpf_cliente", "document");
+      const existing = document ? await db.prepare("SELECT id FROM customers WHERE document=? ORDER BY id LIMIT 1").bind(document).first<{ id: number }>() : await db.prepare("SELECT id FROM customers WHERE company_name=? ORDER BY id LIMIT 1").bind(name).first<{ id: number }>();
+      const fields = [name, document, stringValue(customer, "endereco_cliente", "logradouro"), stringValue(customer, "numero_cliente", "numero"), stringValue(customer, "bairro_cliente", "bairro"), stringValue(customer, "cidade_cliente", "cidade"), stringValue(customer, "uf_cliente", "estado"), stringValue(customer, "cep_cliente", "cep"), timestamp, timestamp];
+      if (existing) await db.prepare("UPDATE customers SET company_name=?,document=?,street=?,number=?,district=?,city=?,state=?,zip_code=?,updated_at=? WHERE id=?").bind(...fields.slice(0, 8), timestamp, existing.id).run();
+      else await db.prepare("INSERT INTO customers (company_name,document,street,number,district,city,state,zip_code,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,'active',?,?)").bind(...fields).run();
+    }
     for (const raw of remoteOrders) {
       if (!raw || typeof raw !== "object") { issues.push("Registro ignorado: formato inválido."); continue; }
-      const order = raw as Record<string, unknown>, number = stringValue(order, "number", "orderNumber", "id", "codigo");
+      const order = raw as Record<string, unknown>, number = stringValue(order, "number", "orderNumber", "id_pedido", "id", "codigo_pedido");
       const customerRaw = (value(order, "customer", "client", "cliente") as Record<string, unknown> | undefined) ?? order;
-      const companyName = stringValue(customerRaw, "companyName", "name", "razaoSocial", "nome", "customerName");
+      const companyName = stringValue(customerRaw, "companyName", "name", "razaoSocial", "nome", "customerName", "nome_cliente", "razao_cliente");
       if (!number || !companyName) { issues.push(`Registro ignorado: ${!number ? "número do pedido" : "cliente"} ausente.`); continue; }
       const customerAddress = {
         document: stringValue(customerRaw, "document", "cnpj", "cpf"),
@@ -83,9 +122,10 @@ export async function POST(request: NextRequest) {
       if (!customer) continue;
       const existing = await db.prepare("SELECT id FROM orders WHERE number=?").bind(number).first<{ id: number }>();
       const deliveryDate = date(value(order, "deliveryDate", "expectedDelivery", "dataEntrega"));
-      const orderDate = date(value(order, "orderDate", "date", "dataPedido")) ?? timestamp;
-      const paymentTerms = stringValue(order, "paymentTerms", "paymentCondition", "condicaoPagamento", "prazoPagamento");
-      const orderRow = existing ? await db.prepare("UPDATE orders SET customer_id=?,order_date=?,delivery_date=?,payment_terms=?,notes=?,updated_at=? WHERE id=? RETURNING id").bind(customer.id, orderDate, deliveryDate, paymentTerms, stringValue(order, "notes", "observations", "observacoes"), timestamp, existing.id).first<{ id: number }>() : await db.prepare("INSERT INTO orders (number,customer_id,order_date,delivery_date,payment_terms,status,notes,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id").bind(number, customer.id, orderDate, deliveryDate, paymentTerms, "active", stringValue(order, "notes", "observations", "observacoes"), actor.userId, timestamp, timestamp).first<{ id: number }>();
+      const orderDate = date(value(order, "orderDate", "date", "dataPedido", "data_pedido")) ?? timestamp;
+      const paymentTerms = stringValue(order, "paymentTerms", "paymentCondition", "condicaoPagamento", "prazoPagamento", "condicao_pagamento");
+      const notes = stringValue(order, "notes", "observations", "observacoes", "obs_pedido", "obs_interno_pedido");
+      const orderRow = existing ? await db.prepare("UPDATE orders SET customer_id=?,order_date=?,delivery_date=?,payment_terms=?,notes=?,updated_at=? WHERE id=? RETURNING id").bind(customer.id, orderDate, deliveryDate, paymentTerms, notes, timestamp, existing.id).first<{ id: number }>() : await db.prepare("INSERT INTO orders (number,customer_id,order_date,delivery_date,payment_terms,status,notes,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id").bind(number, customer.id, orderDate, deliveryDate, paymentTerms, "active", notes, actor.userId, timestamp, timestamp).first<{ id: number }>();
       if (orderRow) {
         const validItems = normalizedItems(order);
         if (validItems.length) {

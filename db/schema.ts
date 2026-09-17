@@ -354,6 +354,8 @@ export const erpIntegrations = sqliteTable("erp_integrations", {
   baseUrl: text("base_url").notNull(),
   ordersPath: text("orders_path").notNull().default("/orders"),
   apiToken: text("api_token"),
+  secretApiToken: text("secret_api_token"),
+  customersPath: text("customers_path").notNull().default("/clientes"),
   active: integer("active").notNull().default(0),
   lastSyncAt: integer("last_sync_at", { mode: "timestamp" }),
   lastSyncStatus: text("last_sync_status"),

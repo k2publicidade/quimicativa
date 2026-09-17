@@ -90,6 +90,8 @@ create unique index if not exists idx_profitability_source_key
   on profitability_entries(source_key) where source_key is not null;
 alter table customers add column if not exists receiving_window text not null default '';
 alter table route_stops add column if not exists receiving_window text not null default '';
+alter table erp_integrations add column if not exists secret_api_token text;
+alter table erp_integrations add column if not exists customers_path text not null default '/clientes';
 
 -- ---------------------------------------------------------------------------
 do $$

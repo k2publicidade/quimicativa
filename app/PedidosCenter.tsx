@@ -209,7 +209,13 @@ export default function PedidosCenter({
   }, [notify]);
 
   useEffect(() => {
-    Promise.all([loadOrders(), loadCustomers()])
+    const refresh = () => {
+      const sync = canWrite
+        ? fetch("/api/integrations/sync", { method: "POST" }).catch(() => undefined)
+        : Promise.resolve();
+      return sync.then(() => Promise.all([loadOrders(), loadCustomers()]));
+    };
+    refresh()
       .then(() => fetch("/api/products"))
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
@@ -223,7 +229,10 @@ export default function PedidosCenter({
           );
       })
       .finally(() => setLoading(false));
-  }, [loadOrders, loadCustomers]);
+    if (!canWrite) return;
+    const interval = window.setInterval(() => { void refresh(); }, 5 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [canWrite, loadOrders, loadCustomers]);
 
   const activeCustomers = customers.filter((c) => c.status === "active");
   const stats = useMemo(() => {
