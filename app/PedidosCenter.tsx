@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type Customer = {
+export type Customer = {
   id: number;
   companyName: string;
   tradingName: string;
@@ -209,29 +209,42 @@ export default function PedidosCenter({
   }, [notify]);
 
   useEffect(() => {
-    const refresh = () => {
-      const sync = canWrite
-        ? fetch("/api/integrations/sync", { method: "POST" }).catch(() => undefined)
-        : Promise.resolve();
-      return sync.then(() => Promise.all([loadOrders(), loadCustomers()]));
+    let disposed = false;
+    const loadProducts = async () => {
+      const response = await fetch("/api/products");
+      if (!response.ok) return;
+      const data = await response.json();
+      if (!disposed && data?.products) {
+        setProducts(
+          data.products.map((p: { id: number; name: string; category: string }) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+          })),
+        );
+      }
     };
-    refresh()
-      .then(() => fetch("/api/products"))
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.products)
-          setProducts(
-            data.products.map((p: { id: number; name: string; category: string }) => ({
-              id: p.id,
-              name: p.name,
-              category: p.category,
-            })),
-          );
-      })
-      .finally(() => setLoading(false));
-    if (!canWrite) return;
-    const interval = window.setInterval(() => { void refresh(); }, 5 * 60 * 1000);
-    return () => window.clearInterval(interval);
+    const loadLocalData = async () => {
+      await Promise.all([loadOrders(), loadCustomers(), loadProducts()]);
+      if (!disposed) setLoading(false);
+    };
+    const syncAndRefresh = async () => {
+      if (!canWrite) return;
+      try {
+        await fetch("/api/integrations/sync", { method: "POST" });
+        if (!disposed) await Promise.all([loadOrders(), loadCustomers()]);
+      } catch {
+        // A slow/unavailable ERP must not prevent the local order list from rendering.
+      }
+    };
+
+    void loadLocalData().then(() => void syncAndRefresh());
+    if (!canWrite) return () => { disposed = true; };
+    const interval = window.setInterval(() => { void syncAndRefresh(); }, 5 * 60 * 1000);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
   }, [canWrite, loadOrders, loadCustomers]);
 
   const activeCustomers = customers.filter((c) => c.status === "active");
@@ -1753,7 +1766,7 @@ function DocumentPipeline({
   );
 }
 
-function CustomersTab({
+export function CustomersTab({
   customers,
   canWrite,
   notify,

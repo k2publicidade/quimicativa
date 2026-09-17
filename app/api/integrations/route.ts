@@ -20,9 +20,8 @@ export async function PUT(request: NextRequest) {
     if (!actor) return NextResponse.json({ error: "Acesso não autorizado" }, { status: 401 });
     if (!canWrite(actor)) return NextResponse.json({ error: "Seu perfil possui acesso somente para consulta" }, { status: 403 });
     const body = await request.json() as Record<string, unknown>, db = getD1();
-    let baseUrl: string, ordersPath: string, customersPath: string;
-    ({ baseUrl, ordersPath } = externalErpUrl(String(body.baseUrl || "").trim(), String(body.ordersPath || "/orders").trim()));
-    ({ ordersPath: customersPath } = externalErpUrl(baseUrl, String(body.customersPath || "/clientes").trim()));
+    const { baseUrl, ordersPath } = externalErpUrl(String(body.baseUrl || "").trim(), String(body.ordersPath || "/orders").trim());
+    const { ordersPath: customersPath } = externalErpUrl(baseUrl, String(body.customersPath || "/clientes").trim());
     const now = timestamp(), supabase = supabaseAdmin(), { data: current, error: currentError } = await supabase.from("erp_integrations").select("id,api_token,secret_api_token").order("id", { ascending: false }).limit(1).maybeSingle();
     if (currentError) throw new Error(currentError.message);
     const token = body.apiToken === undefined ? current?.api_token ?? null : String(body.apiToken || "").trim() || null;

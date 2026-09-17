@@ -11,6 +11,7 @@ import CommercialInsights from "./CommercialInsights";
 import ErpIntegration from "./ErpIntegration";
 import ProfitabilityCenter from "./ProfitabilityCenter";
 import ManagementIndicators from "./ManagementIndicators";
+import ClientesCenter from "./ClientesCenter";
 
 type Module = {
   name: string;
@@ -75,6 +76,14 @@ const departments: Record<string, Department> = {
     summary:
       "Cadastre clientes e pedidos e monte o dossiê do pedido: Nota fiscal, boleto, laudos e fichas de risco em um único PDF.",
     color: "#1d6f9c",
+    modules: [],
+  },
+  clientes: {
+    code: "CL",
+    name: "Clientes",
+    eyebrow: "CADASTRO E RELACIONAMENTO",
+    summary: "Cadastre, consulte e mantenha atualizadas as informações dos clientes ativos.",
+    color: "#1c9b77",
     modules: [],
   },
   rh: {
@@ -536,6 +545,8 @@ export default function Dashboard() {
             <ProductCenter notify={notify} canExport={profile.role !== "viewer"} canManage={profile.role === "ceo" || profile.role === "manager"} />
           ) : active === "pedidos" ? (
             <PedidosCenter notify={notify} canWrite={profile.role !== "viewer"} initialOpenOrderId={orderEditId} onInitialOpenConsumed={() => setOrderEditId(null)} onBuildRoute={(orderId) => { setRouteDraftOrderId(orderId); switchArea("logistica"); }} />
+          ) : active === "clientes" ? (
+            <ClientesCenter notify={notify} canWrite={profile.role !== "viewer"} />
           ) : active === "frota" ? (
             <FleetCenter notify={notify} canWrite={profile.role !== "viewer"} initialTab={fleetInitialTab} />
           ) : active === "logistica" ? (
