@@ -30,6 +30,11 @@ assert.ok(!requested.includes('/produtos/0'),'Produto avulso não pode exigir ca
 assert.ok(statements.some(q=>q.startsWith('INSERT INTO order_items')&&q.includes('1200')&&q.includes('286800')));
 assert.ok(!statements.some(q=>q.startsWith('INSERT INTO products')),'Produto avulso não cria catálogo artificial');
 assert.ok(statements.some(q=>q.includes('source_key IS NOT NULL')),'Itens manuais devem ser preservados');
+order.id_cliente=0;order.nome_cliente='Cliente avulso';requested=[];
+const anonymous=await syncVhsysBatch(s,config,{remoteId:'99',force:true});
+assert.deepEqual(anonymous.issues,[]);
+assert.ok(!requested.includes('/clientes/0'));
+assert.ok(statements.some(q=>q.includes('vhsys:2:pedido:99')));
 statements=[]; failProducts=true;
 const failed=await syncVhsysBatch(s,config,{remoteId:'99',force:true});
 assert.equal(failed.imported,0);

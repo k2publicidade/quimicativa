@@ -53,7 +53,10 @@ export async function syncVhsysBatch(s:SupabaseClient, config:Config, options:{o
       const order = await detail(`/pedidos/${encodeURIComponent(remoteId)}`);
       const products = rows(await get(`/pedidos/${encodeURIComponent(remoteId)}/produtos`,/^Nenhum produto.*encontrado[!.]?$/i));
       const installments = rows(await get(`/pedidos/${encodeURIComponent(remoteId)}/parcelas`,/^Nenhuma parcela para o pedido encontrado!$/));
-      const customer = await detail(`/clientes/${encodeURIComponent(text(order,'id_cliente'))}`);
+      const customerId=text(order,'id_cliente');
+      const customer = customerId && customerId!=='0'
+        ? await detail(`/clientes/${encodeURIComponent(customerId)}`)
+        : {id_cliente:0,razao_cliente:text(order,'nome_cliente'),origem_cadastro:'Cliente avulso informado no pedido; sem cadastro vinculado na vhsys.'};
       for (const item of products) {
         const catalogId = text(item,'id_produto');
         const catalog = catalogId && catalogId !== '0' ? await detail(`/produtos/${encodeURIComponent(catalogId)}`) : {};
@@ -66,7 +69,7 @@ export async function syncVhsysBatch(s:SupabaseClient, config:Config, options:{o
       const snapshot={...order,items:products,customer,installments,_importVersion:2,_fetchedAt:Date.now()};
       samples.push({number,customerName:text(customer,'razao_cliente'),deliveryDate:text(order,'prazo_entrega'),paymentTerms:text(order,'condicao_pagamento'),items:products.length});
       if(options.preview) continue;
-      const time=Math.floor(Date.now()/1000), customerKey=`vhsys:${config.id}:${text(customer,'id_cliente')}`;
+      const time=Math.floor(Date.now()/1000), customerKey=`vhsys:${config.id}:${customerId && customerId!=='0'?customerId:`pedido:${remoteId}`}`;
       const name=text(customer,'razao_cliente','nome_cliente');
       const document=text(customer,'cnpj_cliente','cpf_cliente');
       if(!name) throw new Error('Cliente sem razão social.');
