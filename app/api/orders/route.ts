@@ -26,6 +26,7 @@ type ItemRow = {
   package_type: string;
   package_unit_weight_kg: number;
   weight_kg: number;
+  volume_m3: number;
   lot_number: string | null;
   notes: string | null;
   created_at: number;
@@ -45,7 +46,7 @@ type DocRow = {
   created_at: number;
   updated_at: number;
 };
-type CustomerRow = { id: number; company_name: string; document: string };
+type CustomerRow = { id: number; company_name: string; document: string; district: string | null; city: string | null; state: string | null };
 
 const ORDER_STATUSES = [
   { value: "draft", label: "Rascunho" },
@@ -104,6 +105,7 @@ export const serializeItem = (row: ItemRow) => ({
   packageType: row.package_type,
   packageUnitWeightKg: row.package_unit_weight_kg,
   weightKg: row.weight_kg,
+  volumeM3: row.volume_m3,
   lotNumber: row.lot_number ?? "",
   notes: row.notes ?? "",
   lineTotalCents: Math.round(row.quantity * row.unit_price_cents),
@@ -203,7 +205,7 @@ export async function GET(request: NextRequest) {
       );
     const [customer, items, docs] = await Promise.all([
       db
-        .prepare("SELECT id,company_name,document FROM customers WHERE id=?")
+        .prepare("SELECT id,company_name,document,district,city,state FROM customers WHERE id=?")
         .bind(row.customer_id)
         .first<CustomerRow>(),
       db
@@ -232,6 +234,9 @@ export async function GET(request: NextRequest) {
     );
     return NextResponse.json({
       order: serializeOrder(row, customer?.company_name ?? "", {
+        customerDistrict: customer?.district ?? "",
+        customerCity: customer?.city ?? "",
+        customerState: customer?.state ?? "",
         totalCents,
         itemsCount: items.results.length,
         progress,
@@ -246,27 +251,31 @@ export async function GET(request: NextRequest) {
     .prepare("SELECT * FROM orders ORDER BY id DESC")
     .all<OrderRow>();
   const ids = orders.results.map((o) => o.id);
-  let customers: { id: number; company_name: string }[] = [],
-    itemsAgg: { order_id: number; count: number; total_cents: number; total_weight_kg: number }[] = [],
+  const customerIds = [...new Set(orders.results.map((o) => o.customer_id))];
+  let customers: CustomerRow[] = [],
+    itemsAgg: { order_id: number; count: number; total_cents: number; total_weight_kg: number; total_volume_m3: number; missing_volume_items: number }[] = [],
     docsAgg: { order_id: number; kind: string; order_item_id: number | null }[] = [];
   if (ids.length) {
     const placeholders = ids.map(() => "?").join(",");
+    const customerPlaceholders = customerIds.map(() => "?").join(",");
     [customers, itemsAgg, docsAgg] = await Promise.all([
       db
         .prepare(
-          `SELECT id,company_name FROM customers WHERE id IN (${placeholders})`,
+          `SELECT id,company_name,document,district,city,state FROM customers WHERE id IN (${customerPlaceholders})`,
         )
-        .bind(...ids)
-        .all<{ id: number; company_name: string }>()
+        .bind(...customerIds)
+        .all<CustomerRow>()
         .then((r) => r.results),
       db
         .prepare(
           `SELECT order_id,COUNT(*) AS count,COALESCE(SUM(quantity*unit_price_cents),0) AS total_cents,
-             COALESCE(SUM(CASE WHEN weight_kg>0 THEN weight_kg WHEN package_count>0 AND package_unit_weight_kg>0 THEN package_count*package_unit_weight_kg WHEN LOWER(unit) IN ('kg','quilo','quilos') THEN quantity ELSE 0 END),0) AS total_weight_kg
+             COALESCE(SUM(CASE WHEN weight_kg>0 THEN weight_kg WHEN package_count>0 AND package_unit_weight_kg>0 THEN package_count*package_unit_weight_kg WHEN LOWER(unit) IN ('kg','quilo','quilos') THEN quantity ELSE 0 END),0) AS total_weight_kg,
+             COALESCE(SUM(volume_m3),0) AS total_volume_m3,
+             SUM(CASE WHEN volume_m3<=0 THEN 1 ELSE 0 END) AS missing_volume_items
            FROM order_items WHERE order_id IN (${placeholders}) GROUP BY order_id`,
         )
         .bind(...ids)
-        .all<{ order_id: number; count: number; total_cents: number; total_weight_kg: number }>()
+        .all<{ order_id: number; count: number; total_cents: number; total_weight_kg: number; total_volume_m3: number; missing_volume_items: number }>()
         .then((r) => r.results),
       db
         .prepare(
@@ -278,7 +287,7 @@ export async function GET(request: NextRequest) {
         .then((r) => r.results),
     ]);
   }
-  const byCustomer = new Map(customers.map((c) => [c.id, c.company_name])),
+  const byCustomer = new Map(customers.map((c) => [c.id, c])),
     byItems = new Map(itemsAgg.map((i) => [i.order_id, i])),
     byDocs = new Map<number, { kind: string; order_item_id: number | null }[]>();
   docsAgg.forEach((d) => {
@@ -290,9 +299,15 @@ export async function GET(request: NextRequest) {
     const agg = byItems.get(row.id),
       itemCount = agg?.count ?? 0,
       docRows = byDocs.get(row.id) ?? [];
-    return serializeOrder(row, byCustomer.get(row.customer_id) ?? "", {
+    const customer = byCustomer.get(row.customer_id);
+    return serializeOrder(row, customer?.company_name ?? "", {
+      customerDistrict: customer?.district ?? "",
+      customerCity: customer?.city ?? "",
+      customerState: customer?.state ?? "",
       totalCents: Math.round(agg?.total_cents ?? 0),
       totalWeightKg: Number(agg?.total_weight_kg ?? 0),
+      totalVolumeM3: Number(agg?.total_volume_m3 ?? 0),
+      missingVolumeItems: Number(agg?.missing_volume_items ?? 0),
       itemsCount: itemCount,
       progress: computeOrderProgress(itemCount, docRows),
     });
@@ -319,6 +334,7 @@ type ItemInput = {
   packageType?: string;
   packageUnitWeightKg?: number;
   weightKg?: number;
+  volumeM3?: number;
   lotNumber?: string;
   notes?: string;
 };
@@ -349,9 +365,9 @@ async function validateItems(db: ReturnType<typeof getD1>, items: ItemInput[]) {
     const price = Number(item.unitPriceCents);
     if (!Number.isFinite(price) || price < 0 || Math.round(price) !== price)
       return { error: "Preço unitário inválido em um dos itens." };
-    for (const value of [item.packageCount, item.packageUnitWeightKg, item.weightKg]) {
+    for (const value of [item.packageCount, item.packageUnitWeightKg, item.weightKg, item.volumeM3]) {
       if (value !== undefined && (!Number.isFinite(Number(value)) || Number(value) < 0))
-        return { error: "Embalagens e peso devem usar valores numéricos não negativos." };
+        return { error: "Embalagens, peso e volume devem usar valores numéricos não negativos." };
     }
   }
   return { error: null };
@@ -429,8 +445,8 @@ export async function POST(request: NextRequest) {
       db
         .prepare(
           `INSERT INTO order_items
-           (order_id,product_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,lot_number,notes,created_at,updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           (order_id,product_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,volume_m3,lot_number,notes,created_at,updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           created.id,
@@ -443,6 +459,7 @@ export async function POST(request: NextRequest) {
           String(item.packageType ?? ""),
           Number(item.packageUnitWeightKg ?? 0),
           Number(item.weightKg ?? 0),
+          Number(item.volumeM3 ?? 0),
           String(item.lotNumber ?? ""),
           String(item.notes ?? ""),
           now,
@@ -565,7 +582,7 @@ export async function PUT(request: NextRequest) {
         statements.push(
           db
             .prepare(
-              `UPDATE order_items SET product_id=?,product_name=?,quantity=?,unit=?,unit_price_cents=?,package_count=?,package_type=?,package_unit_weight_kg=?,weight_kg=?,lot_number=?,notes=?,updated_at=? WHERE id=? AND order_id=?`,
+              `UPDATE order_items SET product_id=?,product_name=?,quantity=?,unit=?,unit_price_cents=?,package_count=?,package_type=?,package_unit_weight_kg=?,weight_kg=?,volume_m3=?,lot_number=?,notes=?,updated_at=? WHERE id=? AND order_id=?`,
             )
             .bind(
               Number(item.productId),
@@ -577,6 +594,7 @@ export async function PUT(request: NextRequest) {
               String(item.packageType ?? byId.get(itemId)?.package_type ?? ""),
               Number(item.packageUnitWeightKg ?? byId.get(itemId)?.package_unit_weight_kg ?? 0),
               Number(item.weightKg ?? byId.get(itemId)?.weight_kg ?? 0),
+              Number(item.volumeM3 ?? byId.get(itemId)?.volume_m3 ?? 0),
               String(item.lotNumber ?? byId.get(itemId)?.lot_number ?? ""),
               String(item.notes ?? byId.get(itemId)?.notes ?? ""),
               now,
@@ -589,8 +607,8 @@ export async function PUT(request: NextRequest) {
           db
             .prepare(
               `INSERT INTO order_items
-               (order_id,product_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,lot_number,notes,created_at,updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+               (order_id,product_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,volume_m3,lot_number,notes,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             )
             .bind(
               id,
@@ -603,6 +621,7 @@ export async function PUT(request: NextRequest) {
               String(item.packageType ?? ""),
               Number(item.packageUnitWeightKg ?? 0),
               Number(item.weightKg ?? 0),
+              Number(item.volumeM3 ?? 0),
               String(item.lotNumber ?? ""),
               String(item.notes ?? ""),
               now,

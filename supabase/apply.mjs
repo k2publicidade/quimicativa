@@ -22,7 +22,7 @@ const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized:
 const EXPECTED_TABLES = [
   "users","audit_log","user_roles","records","intake_batches","files","products",
   "lots","suppliers","fispq","licenses","customers","orders","order_items",
-  "order_documents","proposals","proposal_items","vehicles","vehicle_documents",
+  "order_documents","proposals","proposal_items","vehicles","vehicle_documents","drivers",
   "vehicle_maintenance","routes","route_stops","route_events","profitability_entries",
   "receivables","payables","employees","epi_deliveries","recruitment_candidates",
   "labels","packaging_inventory","erp_integrations",

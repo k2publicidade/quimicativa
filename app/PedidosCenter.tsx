@@ -14,6 +14,7 @@ type Customer = {
   city: string;
   state: string;
   zipCode: string;
+  receivingWindow: string;
   contactName: string;
   contactEmail: string;
   contactPhone: string;
@@ -48,6 +49,7 @@ type Item = {
   packageType: string;
   packageUnitWeightKg: number;
   weightKg: number;
+  volumeM3: number;
   lotNumber: string;
   notes: string;
   lineTotalCents: number;
@@ -64,7 +66,7 @@ type Doc = {
   status: string;
   notes: string;
 };
-type OrderFull = OrderSummary & { items: Item[]; documents: Doc[] };
+type OrderFull = { order: OrderSummary; customer: Customer | null; items: Item[]; documents: Doc[] };
 type ProductLight = { id: number; name: string; category: string };
 
 const flowKeys = ["nf", "boleto", "laudo", "ficha"];
@@ -163,9 +165,11 @@ function Modal({
 export default function PedidosCenter({
   notify,
   canWrite = true,
+  onBuildRoute,
 }: {
   notify: (message: string) => void;
   canWrite?: boolean;
+  onBuildRoute?: (orderId: number) => void;
 }) {
   const [tab, setTab] = useState<"orders" | "customers">("orders");
   const [orders, setOrders] = useState<OrderSummary[]>([]);
@@ -269,6 +273,13 @@ export default function PedidosCenter({
           <strong>{activeCustomers.length}</strong>
         </article>
       </section>
+      <section className="operation-flow" aria-label="Fluxo operacional">
+        <div className="active"><b>1</b><span><strong>Montar pedido</strong><small>Cliente, produtos, peso e entrega</small></span></div>
+        <i>→</i>
+        <div><b>2</b><span><strong>Montar rota</strong><small>Caminhão, motorista e sequência</small></span></div>
+        <i>→</i>
+        <div><b>3</b><span><strong>Imprimir romaneio</strong><small>Orientação prática para a equipe</small></span></div>
+      </section>
       <div className="product-tabs" role="tablist" aria-label="Pedidos e clientes">
         {tabs.map(([key, label, badge]) => (
           <button
@@ -298,6 +309,7 @@ export default function PedidosCenter({
           notify={notify}
           onChanged={loadOrders}
           onOpen={(id) => setOpenId(id)}
+          onBuildRoute={onBuildRoute}
         />
       ) : (
         <CustomersTab
@@ -358,6 +370,7 @@ function OrdersTab({
   notify,
   onChanged,
   onOpen,
+  onBuildRoute,
 }: {
   orders: OrderSummary[];
   products: ProductLight[];
@@ -366,16 +379,32 @@ function OrdersTab({
   notify: (message: string) => void;
   onChanged: () => void;
   onOpen: (id: number) => void;
+  onBuildRoute?: (orderId: number) => void;
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [creating, setCreating] = useState(false);
+  const [routingId, setRoutingId] = useState<number | null>(null);
   const visible = orders.filter(
     (o) =>
       (!statusFilter || o.status === statusFilter) &&
       (!query ||
         `${o.number} ${o.customerName}`.toLowerCase().includes(query.toLowerCase())),
   );
+  const prepareRoute = async (order: OrderSummary) => {
+    if (!onBuildRoute) return;
+    setRoutingId(order.id);
+    try {
+      if (order.status === "draft") {
+        const response = await fetch("/api/orders", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: order.id, status: "active" }) });
+        const data = await response.json();
+        if (!response.ok) return notify(data.error || "Não foi possível liberar o pedido para a rota");
+      }
+      onBuildRoute(order.id);
+    } finally {
+      setRoutingId(null);
+    }
+  };
   return (
     <section className="panel archive-panel">
       <div className="section-title">
@@ -463,6 +492,7 @@ function OrdersTab({
                 >
                   PDF
                 </button>
+                {canWrite && ["draft", "active"].includes(order.status) && onBuildRoute && <button className="route-order-button" disabled={routingId === order.id} onClick={() => prepareRoute(order)}>{routingId === order.id ? "Preparando..." : "Montar rota"}</button>}
                 <button className="primary-button" onClick={() => onOpen(order.id)}>
                   Abrir
                 </button>
@@ -516,6 +546,7 @@ function NewOrderModal({
     packageType: string;
     packageUnitWeightKg: string;
     weightKg: string;
+    volumeM3: string;
     lotNumber: string;
   };
   const [customerId, setCustomerId] = useState("");
@@ -524,7 +555,7 @@ function NewOrderModal({
   const [paymentTerms, setPaymentTerms] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<DraftItem[]>([
-    { key: 1, productId: "", quantity: "1", unit: "L", priceText: "", packageCount: "", packageType: "", packageUnitWeightKg: "", weightKg: "", lotNumber: "" },
+    { key: 1, productId: "", quantity: "1", unit: "L", priceText: "", packageCount: "", packageType: "", packageUnitWeightKg: "", weightKg: "", volumeM3: "", lotNumber: "" },
   ]);
   const [saving, setSaving] = useState(false);
   const patchItem = (key: number, field: Partial<DraftItem>) =>
@@ -545,6 +576,7 @@ function NewOrderModal({
         packageType: item.packageType,
         packageUnitWeightKg: Number(item.packageUnitWeightKg.replace(",", ".") || 0),
         weightKg: Number(item.weightKg.replace(",", ".") || 0),
+        volumeM3: Number(item.volumeM3.replace(",", ".") || 0),
         lotNumber: item.lotNumber,
       }));
     if (!payloadItems.length)
@@ -722,6 +754,10 @@ function NewOrderModal({
                 <label>Peso total (kg)</label>
                 <input type="text" inputMode="decimal" value={item.weightKg} onChange={(event) => patchItem(item.key, { weightKg: event.target.value })} placeholder="Ex.: 300" />
               </div>
+              <div className="ord-field">
+                <label>Volume total (m³)</label>
+                <input type="text" inputMode="decimal" value={item.volumeM3} onChange={(event) => patchItem(item.key, { volumeM3: event.target.value })} placeholder="Ex.: 0,45" />
+              </div>
               {items.length > 1 && (
                 <div className="ord-field">
                   <button
@@ -762,6 +798,7 @@ function NewOrderModal({
                   packageType: "",
                   packageUnitWeightKg: "",
                   weightKg: "",
+                  volumeM3: "",
                   lotNumber: "",
                 },
               ])
@@ -1075,8 +1112,9 @@ function ItemsEditor({
     packageType: string;
     packageUnitWeightKg: string;
     weightKg: string;
+    volumeM3: string;
     lotNumber: string;
-  }>({ productId: "", quantity: "1", unit: "L", priceText: "", packageCount: "", packageType: "", packageUnitWeightKg: "", weightKg: "", lotNumber: "" });
+  }>({ productId: "", quantity: "1", unit: "L", priceText: "", packageCount: "", packageType: "", packageUnitWeightKg: "", weightKg: "", volumeM3: "", lotNumber: "" });
   useEffect(() => setItems(initialItems), [initialItems]);
   useEffect(() => {
     fetch("/api/products")
@@ -1098,7 +1136,11 @@ function ItemsEditor({
   const save = async () => {
     setSaving(true);
     try {
-      const payload = items.map((item) => ({
+      const payload: Array<{
+        id?: number; productId: number; quantity: number; unit: string; unitPriceCents: number;
+        packageCount: number; packageType: string; packageUnitWeightKg: number;
+        weightKg: number; volumeM3: number; lotNumber: string; notes?: string;
+      }> = items.map((item) => ({
         id: item.id,
         productId: item.productId,
         quantity: item.quantity,
@@ -1108,6 +1150,7 @@ function ItemsEditor({
         packageType: item.packageType,
         packageUnitWeightKg: item.packageUnitWeightKg,
         weightKg: item.weightKg,
+        volumeM3: item.volumeM3,
         lotNumber: item.lotNumber,
         notes: item.notes,
       }));
@@ -1121,6 +1164,7 @@ function ItemsEditor({
           packageType: draft.packageType,
           packageUnitWeightKg: Number(draft.packageUnitWeightKg.replace(",", ".") || 0),
           weightKg: Number(draft.weightKg.replace(",", ".") || 0),
+          volumeM3: Number(draft.volumeM3.replace(",", ".") || 0),
           lotNumber: draft.lotNumber,
         });
       }
@@ -1132,7 +1176,7 @@ function ItemsEditor({
       const data = await r.json();
       if (r.ok) {
         notify("Produtos do pedido atualizados");
-        setDraft({ productId: "", quantity: "1", unit: "L", priceText: "", packageCount: "", packageType: "", packageUnitWeightKg: "", weightKg: "", lotNumber: "" });
+        setDraft({ productId: "", quantity: "1", unit: "L", priceText: "", packageCount: "", packageType: "", packageUnitWeightKg: "", weightKg: "", volumeM3: "", lotNumber: "" });
         onSaved();
       } else notify(data.error || "Não foi possível salvar os produtos");
     } finally {
@@ -1150,6 +1194,7 @@ function ItemsEditor({
               <th>Qtd.</th>
               <th>Embalagem</th>
               <th>Peso</th>
+              <th>Volume</th>
               <th>Valor unit.</th>
               <th>Total</th>
             </tr>
@@ -1166,6 +1211,7 @@ function ItemsEditor({
                 </td>
                 <td>{item.packageCount > 0 ? `${item.packageCount} ${item.packageType || "volume(s)"}${item.packageUnitWeightKg > 0 ? ` de ${item.packageUnitWeightKg} kg` : ""}` : "—"}</td>
                 <td>{item.weightKg > 0 ? `${item.weightKg.toLocaleString("pt-BR")} kg` : "—"}</td>
+                <td>{item.volumeM3 > 0 ? `${item.volumeM3.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³` : "—"}</td>
                 <td>{fmtBRL(item.unitPriceCents)}</td>
                 <td>{fmtBRL(item.lineTotalCents)}</td>
               </tr>
@@ -1187,6 +1233,7 @@ function ItemsEditor({
               <th>Tipo emb.</th>
               <th>kg/emb.</th>
               <th>Peso kg</th>
+              <th>Volume m³</th>
               <th>Preço unit. (R$)</th>
               <th>Lote</th>
               <th>Total</th>
@@ -1239,6 +1286,7 @@ function ItemsEditor({
                 <td><input type="text" style={{ width: 100 }} value={item.packageType} onChange={(event) => setItems((list) => list.map((row) => row.id === item.id ? { ...row, packageType: event.target.value } : row))} /></td>
                 <td><input type="number" min={0} step="any" style={{ width: 72 }} value={item.packageUnitWeightKg} onChange={(event) => setItems((list) => list.map((row) => row.id === item.id ? { ...row, packageUnitWeightKg: Number(event.target.value) } : row))} /></td>
                 <td><input type="number" min={0} step="any" style={{ width: 82 }} value={item.weightKg} onChange={(event) => setItems((list) => list.map((row) => row.id === item.id ? { ...row, weightKg: Number(event.target.value) } : row))} /></td>
+                <td><input type="number" min={0} step="any" style={{ width: 82 }} value={item.volumeM3} onChange={(event) => setItems((list) => list.map((row) => row.id === item.id ? { ...row, volumeM3: Number(event.target.value) } : row))} /></td>
                 <td>
                   <input
                     type="text"
@@ -1366,6 +1414,10 @@ function ItemsEditor({
         <div className="ord-field">
           <label>Peso total (kg)</label>
           <input type="text" inputMode="decimal" value={draft.weightKg} onChange={(event) => setDraft({ ...draft, weightKg: event.target.value })} />
+        </div>
+        <div className="ord-field">
+          <label>Volume total (m³)</label>
+          <input type="text" inputMode="decimal" value={draft.volumeM3} onChange={(event) => setDraft({ ...draft, volumeM3: event.target.value })} />
         </div>
       </div>
       <button
@@ -1824,6 +1876,7 @@ function CustomerModal({
     city: "",
     state: "",
     zipCode: "",
+    receivingWindow: "",
     contactName: "",
     contactEmail: "",
     contactPhone: "",
@@ -1846,6 +1899,7 @@ function CustomerModal({
           city: customer.city,
           state: customer.state,
           zipCode: customer.zipCode,
+          receivingWindow: customer.receivingWindow,
           contactName: customer.contactName,
           contactEmail: customer.contactEmail,
           contactPhone: customer.contactPhone,
@@ -1988,6 +2042,10 @@ function CustomerModal({
             <div className="ord-field">
               <label htmlFor="c-zip">CEP</label>
               <input id="c-zip" value={form.zipCode} onChange={set("zipCode")} />
+            </div>
+            <div className="ord-field span2">
+              <label htmlFor="c-receiving-window">Janela permitida para recebimento</label>
+              <input id="c-receiving-window" maxLength={120} value={form.receivingWindow} onChange={set("receivingWindow")} placeholder="Ex.: seg–sex, 08:00–12:00 e 13:00–17:00" />
             </div>
           </div>
         </div>

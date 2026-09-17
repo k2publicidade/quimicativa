@@ -11,6 +11,8 @@
 .alert-badge.ok{background:#e6f5ef;color:#178869}
 .alert-badge.warn{background:#fff3df;color:#c47b1e}
 .alert-badge.danger{background:#fee9e8;color:#cf4f4f}
+.row-actions .edit.danger{color:#a73535;border-color:#e7b8b8;background:#fff7f7}
+.row-actions .edit.danger:hover{background:#fee9e8;border-color:#cf7c78}
 .compliance-tag{display:inline-block;background:#f0ebfb;color:#7453bd;border-radius:9px;padding:4px 8px;font-size:7px;font-weight:800;margin:2px 4px 2px 0}
 .compliance-tag.controlled{background:#fee9e8;color:#cf4f4f}
 .compliance-tag.flammable{background:#fff0db;color:#bb741a}

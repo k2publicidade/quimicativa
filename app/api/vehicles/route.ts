@@ -12,6 +12,7 @@ type VehicleRow = {
   model_year: number | null;
   vehicle_type: string;
   capacity_kg: number | null;
+  capacity_m3: number | null;
   odometer_km: number;
   maint_interval_km: number | null;
   maint_interval_months: number | null;
@@ -46,7 +47,6 @@ export const DOC_TYPES = [
   "Licenciamento",
   "Seguro",
   "ANTT",
-  "MOPP",
   "Tacógrafo",
   "Inspeção veicular",
   "Outro",
@@ -75,6 +75,7 @@ export const serializeVehicle = (row: VehicleRow) => ({
   modelYear: row.model_year ?? null,
   vehicleType: row.vehicle_type,
   capacityKg: row.capacity_kg ?? null,
+  capacityM3: row.capacity_m3 ?? null,
   odometerKm: row.odometer_km,
   maintIntervalKm: row.maint_interval_km ?? null,
   maintIntervalMonths: row.maint_interval_months ?? null,
@@ -90,7 +91,7 @@ export const computeFleetAlert = (args: {
   docs: { doc_type: string; expiry_date: number | null }[];
   lastPreventive: { odometer_km: number; service_date: number } | null;
   today: number;
-}) => {
+}): { level: "ok" | "warn" | "danger"; items: string[] } => {
   const { vehicle, docs, lastPreventive, today } = args;
   const items: string[] = [];
   let level: "ok" | "warn" | "danger" = "ok";
@@ -390,8 +391,8 @@ export async function POST(request: NextRequest) {
   const created = await db
     .prepare(
       `INSERT INTO vehicles
-       (plate,renavam,chassis,brand,model,model_year,vehicle_type,capacity_kg,odometer_km,maint_interval_km,maint_interval_months,status,notes,created_by,created_at,updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+       (plate,renavam,chassis,brand,model,model_year,vehicle_type,capacity_kg,capacity_m3,odometer_km,maint_interval_km,maint_interval_months,status,notes,created_by,created_at,updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
     )
     .bind(
       plate,
@@ -402,6 +403,7 @@ export async function POST(request: NextRequest) {
       body.modelYear ? Number(body.modelYear) : null,
       String(body.vehicleType || "Caminhão"),
       body.capacityKg ? Number(body.capacityKg) : null,
+      body.capacityM3 ? Number(body.capacityM3) : null,
       Number(body.odometerKm ?? 0),
       body.maintIntervalKm ? Number(body.maintIntervalKm) : null,
       body.maintIntervalMonths ? Number(body.maintIntervalMonths) : null,
@@ -465,6 +467,9 @@ function validateVehicleBody(
   const capacity = body.capacityKg ? Number(body.capacityKg) : null;
   if (capacity !== null && (!Number.isFinite(capacity) || capacity <= 0 || capacity > 1_000_000))
     return "Capacidade (kg) inválida.";
+  const capacityM3 = body.capacityM3 ? Number(body.capacityM3) : null;
+  if (capacityM3 !== null && (!Number.isFinite(capacityM3) || capacityM3 <= 0 || capacityM3 > 1000))
+    return "Capacidade volumétrica (m³) inválida.";
   return null;
 }
 
@@ -514,7 +519,7 @@ export async function PUT(request: NextRequest) {
     updated = await db
       .prepare(
         `UPDATE vehicles SET
-         plate=?,renavam=?,chassis=?,brand=?,model=?,model_year=?,vehicle_type=?,capacity_kg=?,odometer_km=?,
+         plate=?,renavam=?,chassis=?,brand=?,model=?,model_year=?,vehicle_type=?,capacity_kg=?,capacity_m3=?,odometer_km=?,
          maint_interval_km=?,maint_interval_months=?,status=?,notes=?,updated_at=? WHERE id=? RETURNING *`,
       )
       .bind(
@@ -530,6 +535,9 @@ export async function PUT(request: NextRequest) {
         body.capacityKg !== undefined && body.capacityKg !== null && body.capacityKg !== ""
           ? Number(body.capacityKg)
           : current.capacity_kg,
+        body.capacityM3 !== undefined && body.capacityM3 !== null && body.capacityM3 !== ""
+          ? Number(body.capacityM3)
+          : current.capacity_m3,
         Number(body.odometerKm ?? current.odometer_km),
         body.maintIntervalKm !== undefined && body.maintIntervalKm !== null && body.maintIntervalKm !== ""
           ? Number(body.maintIntervalKm)

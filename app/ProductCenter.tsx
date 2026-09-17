@@ -175,9 +175,11 @@ function Modal({
 export default function ProductCenter({
   notify,
   canExport = true,
+  canManage = false,
 }: {
   notify: (message: string) => void;
   canExport?: boolean;
+  canManage?: boolean;
 }) {
   const [tab, setTab] = useState("products");
   const [products, setProducts] = useState<Product[]>([]);
@@ -275,6 +277,7 @@ export default function ProductCenter({
               onChanged={loadProducts}
               notify={notify}
               canExport={canExport}
+              canManage={canManage}
             />
           )}
           {tab === "lots" && (
@@ -397,11 +400,13 @@ function ProductsTab({
   onChanged,
   notify,
   canExport = true,
+  canManage = false,
 }: {
   products: Product[];
   onChanged: () => void;
   notify: (message: string) => void;
   canExport?: boolean;
+  canManage?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Product | null>(null);
@@ -454,6 +459,13 @@ function ProductsTab({
       await onChanged();
     } else notify(data.error || "Não foi possível salvar o produto");
   };
+  const remove = async (product: Product) => {
+    if (!window.confirm(`Excluir ${product.name}? Produtos com histórico serão apenas inativados.`)) return;
+    const r = await fetch(`/api/products?id=${product.id}`, { method: "DELETE" }), data = await r.json();
+    if (!r.ok) return notify(data.error || "Não foi possível excluir o produto");
+    notify(data.archived ? "Produto inativado para preservar o histórico" : "Produto excluído");
+    await onChanged();
+  };
   return (
     <>
       <section className="panel archive-panel">
@@ -462,9 +474,9 @@ function ProductsTab({
             <h2>Catálogo de produtos</h2>
             <p>Dados regulatórios estruturados — não texto livre.</p>
           </div>
-          <button className="primary-button" onClick={() => setCreating(true)}>
+          {canManage && <button className="primary-button" onClick={() => setCreating(true)}>
             <span>+</span> Novo produto
-          </button>
+          </button>}
         </div>
         <div className="archive-search">
           <span>⌕</span>
@@ -568,9 +580,8 @@ function ProductsTab({
                             Ficha PDF
                           </button>
                         )}
-                        <button className="edit" onClick={() => setEditing(product)}>
-                          Editar
-                        </button>
+                        {canManage && <button className="edit" onClick={() => setEditing(product)}>Editar</button>}
+                        {canManage && <button className="edit danger" onClick={() => remove(product)}>Excluir</button>}
                       </div>
                     </td>
                   </tr>
@@ -586,7 +597,7 @@ function ProductsTab({
           </div>
         )}
       </section>
-      {(creating || editing) && (
+      {canManage && (creating || editing) && (
         <Modal
           eyebrow={editing ? "FICHA DO PRODUTO" : "NOVO PRODUTO"}
           title={editing ? `Editar ${editing.name}` : "Cadastrar produto"}

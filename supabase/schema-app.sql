@@ -25,6 +25,7 @@ drop table if exists "route_stops" cascade;
 drop table if exists "erp_integrations" cascade;
 drop table if exists "profitability_entries" cascade;
 drop table if exists "route_events" cascade;
+drop table if exists "drivers" cascade;
 
 -- ===== TABELAS =====
 CREATE TABLE "audit_log" (
@@ -354,6 +355,21 @@ CREATE TABLE "route_events" (
  "created_by" text,
  "created_at" bigint NOT NULL);
 
+CREATE TABLE "drivers" (
+ "id" bigserial primary key,
+ "name" text NOT NULL,
+ "cpf" text,
+ "phone" text,
+ "license_number" text,
+ "license_category" text,
+ "license_expiry" bigint,
+ "mopp_expiry" bigint,
+ "status" text DEFAULT 'active' NOT NULL,
+ "notes" text,
+ "created_by" text,
+ "created_at" bigint NOT NULL,
+ "updated_at" bigint NOT NULL);
+
 -- ===== CHAVES ESTRANGEIRAS =====
 alter table "audit_log" add constraint "fk_audit_log_1" foreign key ("actor_id") references "users"(id) ON UPDATE no action ON DELETE no action;
 alter table "files" add constraint "fk_files_2" foreign key ("record_id") references "records"(id) ON UPDATE no action ON DELETE no action;
@@ -393,6 +409,7 @@ alter table "profitability_entries" add constraint "fk_profitability_entries_35"
 alter table "route_events" add constraint "fk_route_events_36" foreign key ("route_id") references "routes"(id);
 alter table "route_events" add constraint "fk_route_events_37" foreign key ("stop_id") references "route_stops"(id);
 alter table "route_events" add constraint "fk_route_events_38" foreign key ("created_by") references "users"(id) ;
+alter table "drivers" add constraint "fk_drivers_39" foreign key ("created_by") references "users"(id) ON UPDATE no action ON DELETE no action;
 
 -- ===== INDICES E ALTERACOES =====
 CREATE INDEX "idx_audit_entity" ON "audit_log" ("entity_type","entity_id");
@@ -472,3 +489,15 @@ ALTER TABLE "order_items" ADD "package_type" text DEFAULT '' NOT NULL;
 ALTER TABLE "order_items" ADD "package_unit_weight_kg" double precision DEFAULT 0 NOT NULL;
 ALTER TABLE "order_items" ADD "weight_kg" double precision DEFAULT 0 NOT NULL;
 ALTER TABLE "routes" ADD "origin_address" text DEFAULT '' NOT NULL;
+ALTER TABLE "profitability_entries" ADD "source_key" text;
+CREATE UNIQUE INDEX "idx_profitability_source_key" ON "profitability_entries" ("source_key") WHERE "source_key" IS NOT NULL;
+ALTER TABLE "customers" ADD "receiving_window" text DEFAULT '' NOT NULL;
+ALTER TABLE "route_stops" ADD "receiving_window" text DEFAULT '' NOT NULL;
+CREATE UNIQUE INDEX "drivers_cpf_unique" ON "drivers" ("cpf");
+CREATE INDEX "idx_drivers_status" ON "drivers" ("status");
+CREATE INDEX "idx_drivers_expiry" ON "drivers" ("license_expiry","mopp_expiry");
+ALTER TABLE "routes" ADD "driver_id" bigint REFERENCES "drivers"("id");
+CREATE INDEX "idx_routes_driver_date" ON "routes" ("driver_id","route_date");
+ALTER TABLE "vehicles" ADD "capacity_m3" double precision;
+ALTER TABLE "order_items" ADD "volume_m3" double precision DEFAULT 0 NOT NULL;
+ALTER TABLE "route_stops" ADD "volume_m3" double precision DEFAULT 0 NOT NULL;

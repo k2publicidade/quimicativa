@@ -16,7 +16,6 @@ const REQUIRED_VALIDITY = [
   "Licenciamento",
   "Seguro",
   "ANTT",
-  "MOPP",
   "Tacógrafo",
   "Inspeção veicular",
 ];

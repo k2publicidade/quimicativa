@@ -20,6 +20,7 @@ export async function GET() {
       SUPABASE_SECRET_KEY: check("SUPABASE_SECRET_KEY"),
       SUPABASE_STORAGE_BUCKET: check("SUPABASE_STORAGE_BUCKET"),
       NEXT_PUBLIC_MAPBOX_TOKEN: check("NEXT_PUBLIC_MAPBOX_TOKEN"),
+      MAPBOX_ACCESS_TOKEN: check("MAPBOX_ACCESS_TOKEN"),
     },
     supabaseHost: url ? new URL(url).host : null,
     runtime: "edge",

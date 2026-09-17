@@ -15,6 +15,7 @@ type CustomerRow = {
   city: string | null;
   state: string | null;
   zip_code: string | null;
+  receiving_window: string;
   contact_name: string | null;
   contact_email: string | null;
   contact_phone: string | null;
@@ -39,6 +40,7 @@ export const serializeCustomer = (row: CustomerRow) => ({
   city: row.city ?? "",
   state: row.state ?? "",
   zipCode: row.zip_code ?? "",
+  receivingWindow: row.receiving_window ?? "",
   contactName: row.contact_name ?? "",
   contactEmail: row.contact_email ?? "",
   contactPhone: row.contact_phone ?? "",
@@ -105,6 +107,8 @@ export function validateCustomerBody(
   const email = String(body.contactEmail || "").trim();
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     return "E-mail de contato inválido.";
+  if (String(body.receivingWindow || "").trim().length > 120)
+    return "Janela de recebimento muito longa (máximo 120 caracteres).";
   return null;
 }
 
@@ -172,8 +176,8 @@ export async function POST(request: NextRequest) {
       .prepare(
         `INSERT INTO customers
          (company_name,trading_name,document,state_registration,street,number,complement,district,city,state,zip_code,
-          contact_name,contact_email,contact_phone,segment,lgpd_basis,status,notes,created_by,created_at,updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
+          receiving_window,contact_name,contact_email,contact_phone,segment,lgpd_basis,status,notes,created_by,created_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING *`,
       )
       .bind(
         String(body.companyName || "").trim(),
@@ -187,6 +191,7 @@ export async function POST(request: NextRequest) {
         String(body.city || "").trim(),
         String(body.state || "").trim().toUpperCase(),
         String(body.zipCode || "").trim(),
+        String(body.receivingWindow || "").trim(),
         String(body.contactName || "").trim(),
         String(body.contactEmail || "").trim(),
         String(body.contactPhone || "").trim(),
@@ -255,6 +260,7 @@ export async function PUT(request: NextRequest) {
     segment: body.segment ?? current.segment ?? "",
     status: body.status ?? current.status,
     contactEmail: body.contactEmail ?? current.contact_email ?? "",
+    receivingWindow: body.receivingWindow ?? current.receiving_window ?? "",
   };
   const validationError = validateCustomerBody(candidate);
   if (validationError)
@@ -263,7 +269,7 @@ export async function PUT(request: NextRequest) {
     updated = await db
       .prepare(
         `UPDATE customers SET
-         company_name=?,trading_name=?,document=?,state_registration=?,street=?,number=?,complement=?,district=?,city=?,state=?,zip_code=?,
+         company_name=?,trading_name=?,document=?,state_registration=?,street=?,number=?,complement=?,district=?,city=?,state=?,zip_code=?,receiving_window=?,
          contact_name=?,contact_email=?,contact_phone=?,segment=?,lgpd_basis=?,status=?,notes=?,updated_at=?
          WHERE id=? RETURNING *`,
       )
@@ -279,6 +285,7 @@ export async function PUT(request: NextRequest) {
         String(body.city ?? current.city ?? "").trim(),
         String(body.state ?? current.state ?? "").trim().toUpperCase(),
         String(body.zipCode ?? current.zip_code ?? "").trim(),
+        String(body.receivingWindow ?? current.receiving_window ?? "").trim(),
         String(body.contactName ?? current.contact_name ?? "").trim(),
         String(body.contactEmail ?? current.contact_email ?? "").trim(),
         String(body.contactPhone ?? current.contact_phone ?? "").trim(),

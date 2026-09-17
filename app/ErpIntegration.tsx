@@ -12,6 +12,7 @@ type Config = {
   lastSyncStatus: string | null;
   lastSyncMessage: string | null;
 };
+type Preview = { totalRecords: number; validRecords: number; sample: { number: string; customerName: string; deliveryDate: string; paymentTerms: string; items: number }[] };
 
 const emptyConfig: Config = {
   provider: "REST",
@@ -26,6 +27,8 @@ const emptyConfig: Config = {
 export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean; notify: (message: string) => void }) {
   const [config, setConfig] = useState<Config>(emptyConfig);
   const [saving, setSaving] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<Preview | null>(null);
 
   useEffect(() => {
     fetch("/api/integrations")
@@ -75,6 +78,22 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
     }
   };
 
+  const testPayload = async () => {
+    setPreviewing(true);
+    try {
+      const response = await fetch("/api/integrations/sync?preview=1", { method: "POST" });
+      const data = await response.json() as Preview & { error?: string };
+      if (!response.ok) throw new Error(data.error || "Não foi possível validar o payload do ERP");
+      setPreview(data);
+      notify(`${data.validRecords} de ${data.totalRecords} pedido(s) reconhecido(s); nenhum dado foi importado.`);
+    } catch (error) {
+      setPreview(null);
+      notify(error instanceof Error ? error.message : "Não foi possível validar o ERP");
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   return <section className="panel erp-panel">
     <div className="panel-heading">
       <div><h2>Integração com ERP</h2><p>Sincronize pedidos sem redigitar dados no CRM.</p></div>
@@ -92,9 +111,11 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
       <label className="erp-check"><input type="checkbox" checked={config.active} onChange={event => setConfig({ ...config, active: event.target.checked })} /> Ativar sincronização</label>
       <div className="erp-actions">
         <button className="secondary-button" type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar configuração"}</button>
+        <button className="secondary-button" type="button" onClick={testPayload} disabled={saving || previewing || !config.active}>{previewing ? "Validando..." : "Testar e visualizar"}</button>
         <button className="primary-button" type="button" onClick={sync} disabled={saving || !config.active}>Sincronizar pedidos</button>
       </div>
     </form> : <p className="erp-readonly">Somente gestores podem alterar a integração.</p>}
+    {preview && <div className="erp-preview"><strong>Prévia sem importação</strong><span>{preview.validRecords} de {preview.totalRecords} registros válidos</span>{preview.sample.length ? <div className="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Entrega</th><th>Pagamento</th><th>Itens válidos</th></tr></thead><tbody>{preview.sample.map((item, index) => <tr key={`${item.number}-${index}`}><td>{item.number || "Ausente"}</td><td>{item.customerName || "Ausente"}</td><td>{item.deliveryDate || "—"}</td><td>{item.paymentTerms || "—"}</td><td>{item.items}</td></tr>)}</tbody></table></div> : <small>Nenhum pedido reconhecido no retorno.</small>}</div>}
     {config.lastSyncMessage && <small className={`erp-message ${config.lastSyncStatus}`}>{config.lastSyncMessage}{config.lastSyncAt ? ` · ${new Date(config.lastSyncAt * 1000).toLocaleString("pt-BR")}` : ""}</small>}
   </section>;
 }

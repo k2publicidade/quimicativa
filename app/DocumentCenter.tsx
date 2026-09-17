@@ -146,7 +146,7 @@ async function readPdfText(file: File): Promise<string> {
           .join(" "),
       );
     }
-    await doc.destroy();
+    await doc.cleanup();
     return pages.join("\n");
   } catch {
     return "";

@@ -87,3 +87,22 @@
   color: #7e8b9d;
   font-size: 8px;
 }
+.truck-safety-alert {
+  margin: 8px 0;
+  padding: 9px 10px;
+  border: 1px solid #e9c783;
+  border-radius: 8px;
+  background: #fff9ee;
+  color: #725117;
+}
+
+.truck-safety-alert small {
+  display: block;
+  margin-top: 3px;
+  font-size: 7px;
+}
+
+.driver-alert {
+  color: #b65a35 !important;
+  font-weight: 800;
+}

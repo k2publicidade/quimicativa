@@ -6,6 +6,8 @@ type Vehicle = {
   plate: string;
   brand: string;
   model: string;
+  capacityKg: number | null;
+  capacityM3: number | null;
   modelYear: number | null;
   vehicleType: string;
   odometerKm: number;
@@ -50,18 +52,20 @@ type VMaint = {
   status: string;
   notes: string;
 };
-type VehicleFull = Vehicle & {
+type Driver = { id: number; name: string; cpf: string; phone: string; licenseNumber: string; licenseCategory: string; licenseExpiry: string; moppExpiry: string; status: string; notes: string; alerts: string[] };
+type VehicleFull = {
+  vehicle: Vehicle;
   documents: VDoc[];
   maintenance: VMaint[];
+  alert: { level: "ok" | "warn" | "danger"; items: string[] };
 };
-type TruckRoute = { id: number; vehicleId: number; name: string; code: string; driverName: string; routeDate: string; status: string; loadedKg: number; capacityKg: number | null; occupancy: number | null; loadSummary: { packageType: string; unitWeightKg: number; count: number }[]; stops: { id: number; sequence: number; customerName: string; orderNumber: string; address: string; weightKg: number; packageSummary: string; paymentTerms: string }[] };
+type TruckRoute = { id: number; vehicleId: number; name: string; code: string; driverName: string; routeDate: string; status: string; loadedKg: number; capacityKg: number | null; occupancy: number | null; loadedM3: number; capacityM3: number | null; volumeOccupancy: number | null; volumeDataComplete: boolean; loadSummary: { packageType: string; unitWeightKg: number; count: number }[]; productSummary: { productName: string; quantity: number; unit: string; unNumber: string; hazardClass: string }[]; hazardousLoad: boolean; hasValidMopp: boolean; safetyNotices: string[]; stops: { id: number; sequence: number; customerName: string; orderNumber: string; address: string; weightKg: number; volumeM3: number; packageSummary: string; receivingWindow: string; paymentTerms: string }[] };
 
 const docTypes = [
   "CRLV",
   "Licenciamento",
   "Seguro",
   "ANTT",
-  "MOPP",
   "Tacógrafo",
   "Inspeção veicular",
   "Outro",
@@ -153,7 +157,7 @@ export default function FleetCenter({
   notify: (message: string) => void;
   canWrite?: boolean;
 }) {
-  const [tab, setTab] = useState<"vehicles" | "maintenance">("vehicles");
+  const [tab, setTab] = useState<"vehicles" | "drivers" | "maintenance">("vehicles");
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [summary, setSummary] = useState({
     total: 0,
@@ -163,6 +167,7 @@ export default function FleetCenter({
     danger: 0,
   });
   const [maintenance, setMaintenance] = useState<VMaint[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<number | null>(null);
 
@@ -186,19 +191,29 @@ export default function FleetCenter({
       /* agenda secundária */
     }
   }, []);
+  const loadDrivers = useCallback(async () => {
+    try {
+      const r = await fetch("/api/drivers");
+      if (!r.ok) throw new Error();
+      setDrivers((await r.json()).drivers ?? []);
+    } catch {
+      notify("Não foi possível carregar os motoristas");
+    }
+  }, [notify]);
 
   useEffect(() => {
-    Promise.all([loadVehicles(), loadMaintenance()]).finally(() =>
+    Promise.all([loadVehicles(), loadMaintenance(), loadDrivers()]).finally(() =>
       setLoading(false),
     );
-  }, [loadVehicles, loadMaintenance]);
+  }, [loadVehicles, loadMaintenance, loadDrivers]);
 
   const reloadAll = useCallback(async () => {
-    await Promise.all([loadVehicles(), loadMaintenance()]);
-  }, [loadVehicles, loadMaintenance]);
+    await Promise.all([loadVehicles(), loadMaintenance(), loadDrivers()]);
+  }, [loadVehicles, loadMaintenance, loadDrivers]);
 
   const tabs = [
     ["vehicles", "Veículos", `${summary.total}`],
+    ["drivers", "Motoristas", `${drivers.filter(driver => driver.status === "active").length}`],
     ["maintenance", "Manutenções", ""],
   ] as const;
   const okCount = summary.total - summary.attention;
@@ -210,8 +225,8 @@ export default function FleetCenter({
           <p className="eyebrow">GESTÃO DA FROTA</p>
           <h2>Veículos, documentos e revisões em dia</h2>
           <p>
-            Cadastre cada caminhão, acompanhe a validade de CRLV, seguro,
-            licenciamento e MOPP, e controle as manutenções periódicas por km
+            Cadastre caminhões e motoristas, acompanhe CRLV, seguro, CNH e
+            MOPP, e controle as manutenções periódicas por km
             e por tempo — com alerta antes de vencer.
           </p>
         </div>
@@ -262,6 +277,8 @@ export default function FleetCenter({
           onChanged={loadVehicles}
           onOpen={(id) => setOpenId(id)}
         />
+      ) : tab === "drivers" ? (
+        <DriversTab drivers={drivers} canWrite={canWrite} notify={notify} onChanged={loadDrivers} />
       ) : (
         <MaintenanceTab
           maintenance={maintenance}
@@ -378,9 +395,9 @@ function VehiclesTab({
                     <strong className="flt-plate">{vehicle.plate}</strong>
                     <small>
                       {" "}
-                      {[vehicle.brand, vehicle.model, vehicle.modelYear]
+                    {[vehicle.brand, vehicle.model, vehicle.modelYear]
                         .filter(Boolean)
-                        .join(" ")}
+                      .join(" ")}{vehicle.capacityM3 ? ` · ${vehicle.capacityM3.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m³` : ""}
                     </small>
                   </td>
                   <td>{fmtKm(vehicle.odometerKm)} km</td>
@@ -465,6 +482,7 @@ const emptyVehicle = {
   modelYear: "",
   vehicleType: "Caminhão",
   capacityKg: "",
+  capacityM3: "",
   odometerKm: "0",
   maintIntervalKm: "",
   maintIntervalMonths: "",
@@ -495,6 +513,7 @@ function VehicleFormModal({
           modelYear: vehicle.modelYear ? String(vehicle.modelYear) : "",
           vehicleType: vehicle.vehicleType,
           capacityKg: vehicle.capacityKg ? String(vehicle.capacityKg) : "",
+          capacityM3: vehicle.capacityM3 ? String(vehicle.capacityM3) : "",
           odometerKm: String(vehicle.odometerKm),
           maintIntervalKm: vehicle.maintIntervalKm
             ? String(vehicle.maintIntervalKm)
@@ -523,6 +542,7 @@ function VehicleFormModal({
           ...(vehicle ? { id: vehicle.id } : {}),
           modelYear: form.modelYear ? Number(form.modelYear) : null,
           capacityKg: form.capacityKg ? Number(form.capacityKg) : null,
+          capacityM3: form.capacityM3 ? Number(form.capacityM3.replace(",", ".")) : null,
           odometerKm: Number(form.odometerKm || 0),
           maintIntervalKm: form.maintIntervalKm
             ? Number(form.maintIntervalKm)
@@ -619,6 +639,10 @@ function VehicleFormModal({
                 onChange={set("capacityKg")}
                 placeholder="14000"
               />
+            </div>
+            <div className="ord-field">
+              <label htmlFor="v-capacity-m3">Capacidade útil (m³)</label>
+              <input id="v-capacity-m3" inputMode="decimal" value={form.capacityM3} onChange={set("capacityM3")} placeholder="Ex.: 32,5" />
             </div>
             <div className="ord-field">
               <label htmlFor="v-renavam">RENAVAM</label>
@@ -761,7 +785,7 @@ function VehicleDetailModal({
       eyebrow="GESTÃO DO VEÍCULO"
       onClose={onClose}
     >
-      {!full ? (
+      {!full || !vehicle ? (
         <div className="ord-empty">{error || "Carregando..."}</div>
       ) : (
         <div className="ord-detail">
@@ -830,7 +854,7 @@ function VehicleDetailModal({
 
           <div className="ord-section truck-routes">
             <header><div><h4>Rotas e cargas atribuídas</h4><p>Pedidos vinculados automaticamente a este caminhão.</p></div><strong>{routes.length} rota(s)</strong></header>
-            {routes.length ? routes.map(route => <article className="truck-route" key={route.id}><div className="truck-route-heading"><div><strong>{route.name}</strong><small>{route.code} · {route.routeDate} · {route.driverName || "Motorista não definido"}</small></div><span>{route.loadedKg.toLocaleString("pt-BR")} kg{route.capacityKg ? ` · ${route.occupancy ?? 0}%` : ""}</span></div>{route.loadSummary.length > 0 && <div className="truck-load-tags">{route.loadSummary.map(item => <span key={`${item.packageType}-${item.unitWeightKg}`}>{item.count.toLocaleString("pt-BR")} {item.packageType}{item.unitWeightKg ? ` de ${item.unitWeightKg.toLocaleString("pt-BR")} kg` : ""}</span>)}</div>}<div className="truck-stops">{route.stops.map(stop => <div key={stop.id}><b>{stop.sequence}</b><span><strong>{stop.customerName} · {stop.orderNumber}</strong><small>{stop.address || "Endereço não informado"}</small><small>{stop.packageSummary || `${stop.weightKg.toLocaleString("pt-BR")} kg`} · Pagamento: {stop.paymentTerms || "não informado"}</small></span></div>)}</div></article>) : <p className="ord-empty">Nenhuma rota atribuída a este caminhão.</p>}
+            {routes.length ? routes.map(route => <article className="truck-route" key={route.id}><div className="truck-route-heading"><div><strong>{route.name}</strong><small>{route.code} · {route.routeDate} · {route.driverName || "Motorista não definido"}</small></div><span>{route.loadedKg.toLocaleString("pt-BR")} kg{route.capacityKg ? ` · ${route.occupancy ?? 0}%` : ""}<small>{route.volumeDataComplete ? ` · ${route.loadedM3.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³${route.capacityM3 ? ` · ${route.volumeOccupancy}%` : ""}` : " · cubagem incompleta"}</small></span></div>{route.loadSummary.length > 0 && <div className="truck-load-tags">{route.loadSummary.map(item => <span key={`${item.packageType}-${item.unitWeightKg}`}>{item.count.toLocaleString("pt-BR")} {item.packageType}{item.unitWeightKg ? ` de ${item.unitWeightKg.toLocaleString("pt-BR")} kg` : ""}</span>)}</div>}{route.productSummary.length > 0 && <div className="truck-load-tags">{route.productSummary.map(item => <span key={`${item.productName}-${item.unit}`}>{item.productName}: {item.quantity.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} {item.unit}{item.unNumber ? ` · ONU ${item.unNumber}` : ""}</span>)}</div>}{route.safetyNotices.length > 0 && <div className="truck-safety-alert">{route.safetyNotices.map(notice => <small key={notice}>{notice}</small>)}</div>}<div className="truck-stops">{route.stops.map(stop => <div key={stop.id}><b>{stop.sequence}</b><span><strong>{stop.customerName} · {stop.orderNumber}</strong><small>{stop.address || "Endereço não informado"}</small><small>Recebimento: {stop.receivingWindow || "sem restrição informada"}</small><small>{stop.packageSummary || `${stop.weightKg.toLocaleString("pt-BR")} kg`} · {stop.volumeM3 ? `${stop.volumeM3.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³ · ` : "cubagem não informada · "}Pagamento: {stop.paymentTerms || "não informado"}</small></span></div>)}</div></article>) : <p className="ord-empty">Nenhuma rota atribuída a este caminhão.</p>}
           </div>
 
           <div className="ord-section">
@@ -838,7 +862,7 @@ function VehicleDetailModal({
               <div>
                 <h4>Documentos e validades</h4>
                 <p>
-                  CRLV, licenciamento, seguro, ANTT, MOPP — validade vencida
+                  CRLV, licenciamento, seguro, ANTT e inspeções — validade vencida
                   gera alerta no veículo.
                 </p>
               </div>
@@ -1463,4 +1487,51 @@ function VehiclePickerMaintModal({
       </div>
     </Modal>
   );
+}
+
+function DriversTab({ drivers, canWrite, notify, onChanged }: { drivers: Driver[]; canWrite: boolean; notify: (message: string) => void; onChanged: () => void }) {
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState<Driver | null | undefined>(undefined);
+  const visible = drivers.filter(driver => `${driver.name} ${driver.cpf} ${driver.licenseNumber}`.toLowerCase().includes(query.toLowerCase()));
+  return <section className="panel archive-panel">
+    <div className="section-title"><div><h2>Motoristas</h2><p>CNH, MOPP, contato e disponibilidade para vinculação às rotas.</p></div>{canWrite && <button className="primary-button" onClick={() => setEditing(null)}><span>+</span> Novo motorista</button>}</div>
+    <div className="ord-toolbar"><div className="archive-search"><span>⌕</span><input aria-label="Buscar motoristas" placeholder="Buscar por nome, CPF ou CNH..." value={query} onChange={event => setQuery(event.target.value)} /></div></div>
+    {visible.length ? <div className="table-wrap"><table><thead><tr><th>Motorista</th><th>CNH</th><th>MOPP</th><th>Contato</th><th>Situação</th><th></th></tr></thead><tbody>{visible.map(driver => <tr key={driver.id}>
+      <td><strong>{driver.name}</strong><small>{driver.cpf || "CPF não informado"}</small></td>
+      <td>{driver.licenseNumber || "—"}<small>{driver.licenseCategory ? `Categoria ${driver.licenseCategory}` : "Categoria não informada"} · {driver.licenseExpiry ? `vence ${fmtDateBR(driver.licenseExpiry)}` : "sem validade"}</small></td>
+      <td>{driver.moppExpiry ? fmtDateBR(driver.moppExpiry) : "Não informado"}{driver.alerts.map(alert => <small className="driver-alert" key={alert}>{alert}</small>)}</td>
+      <td>{driver.phone || "—"}</td><td><span className={`flt-status ${driver.status}`}><span className="k" />{driver.status === "active" ? "Ativo" : "Inativo"}</span></td>
+      <td>{canWrite && <button className="primary-button" onClick={() => setEditing(driver)}>Editar</button>}</td>
+    </tr>)}</tbody></table></div> : <div className="ord-empty">Nenhum motorista cadastrado ou correspondente à busca.</div>}
+    {editing !== undefined && <DriverFormModal driver={editing} notify={notify} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); onChanged(); }} />}
+  </section>;
+}
+
+const emptyDriver = { name: "", cpf: "", phone: "", licenseNumber: "", licenseCategory: "", licenseExpiry: "", moppExpiry: "", status: "active", notes: "" };
+
+function DriverFormModal({ driver, notify, onClose, onSaved }: { driver: Driver | null; notify: (message: string) => void; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState(driver ? { name: driver.name, cpf: driver.cpf, phone: driver.phone, licenseNumber: driver.licenseNumber, licenseCategory: driver.licenseCategory, licenseExpiry: driver.licenseExpiry, moppExpiry: driver.moppExpiry, status: driver.status, notes: driver.notes } : emptyDriver);
+  const [saving, setSaving] = useState(false);
+  const set = (key: keyof typeof emptyDriver, value: string) => setForm(current => ({ ...current, [key]: value }));
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); setSaving(true);
+    try {
+      const response = await fetch("/api/drivers", { method: driver ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(driver ? { id: driver.id } : {}), ...form }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Não foi possível salvar o motorista.");
+      notify(driver ? "Motorista atualizado" : "Motorista cadastrado"); onSaved();
+    } catch (error) { notify(error instanceof Error ? error.message : "Não foi possível salvar o motorista"); }
+    finally { setSaving(false); }
+  };
+  return <Modal title={driver ? "Editar motorista" : "Novo motorista"} eyebrow="GESTÃO DE CONDUTORES" onClose={onClose}><form className="ord-detail" onSubmit={submit}><div className="ord-section"><div className="ord-form-grid">
+    <div className="ord-field span2"><label>Nome completo *</label><input required minLength={3} value={form.name} onChange={event => set("name", event.target.value)} /></div>
+    <div className="ord-field"><label>CPF</label><input inputMode="numeric" maxLength={14} value={form.cpf} onChange={event => set("cpf", event.target.value)} placeholder="Somente números ou formatado" /></div>
+    <div className="ord-field"><label>Telefone</label><input value={form.phone} onChange={event => set("phone", event.target.value)} /></div>
+    <div className="ord-field"><label>Número da CNH</label><input value={form.licenseNumber} onChange={event => set("licenseNumber", event.target.value)} /></div>
+    <div className="ord-field"><label>Categoria</label><input maxLength={5} value={form.licenseCategory} onChange={event => set("licenseCategory", event.target.value)} placeholder="Ex.: D ou AE" /></div>
+    <div className="ord-field"><label>Validade da CNH</label><input type="date" value={form.licenseExpiry} onChange={event => set("licenseExpiry", event.target.value)} /></div>
+    <div className="ord-field"><label>Validade do MOPP</label><input type="date" value={form.moppExpiry} onChange={event => set("moppExpiry", event.target.value)} /></div>
+    <div className="ord-field"><label>Situação</label><select value={form.status} onChange={event => set("status", event.target.value)}><option value="active">Ativo</option><option value="inactive">Inativo</option></select></div>
+    <div className="ord-field span2"><label>Observações</label><textarea value={form.notes} onChange={event => set("notes", event.target.value)} /></div>
+  </div></div><div className="ord-form-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="primary-button" disabled={saving}>{saving ? "Salvando..." : "Salvar motorista"}</button></div></form></Modal>;
 }

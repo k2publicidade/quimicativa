@@ -84,12 +84,20 @@ grant execute on function exec_sql_batch(jsonb) to service_role;
 -- O backend usa service_role (ignora RLS) e aplica o RBAC em codigo, como
 -- antes. O RLS protege o acesso direto pelo navegador (role authenticated).
 -- ---------------------------------------------------------------------------
+-- Importação idempotente da planilha de lucratividade.
+alter table profitability_entries add column if not exists source_key text;
+create unique index if not exists idx_profitability_source_key
+  on profitability_entries(source_key) where source_key is not null;
+alter table customers add column if not exists receiving_window text not null default '';
+alter table route_stops add column if not exists receiving_window text not null default '';
+
+-- ---------------------------------------------------------------------------
 do $$
 declare t text;
 declare app_tables text[] := array[
   'users','records','intake_batches','files','audit_log','products','lots',
   'suppliers','fispq','licenses','customers','orders','order_items',
-  'order_documents','vehicles','vehicle_documents','vehicle_maintenance',
+  'order_documents','vehicles','vehicle_documents','vehicle_maintenance','drivers',
   'routes','route_stops','route_events','erp_integrations','profitability_entries'];
 begin
   foreach t in array app_tables loop
@@ -105,7 +113,7 @@ declare t text;
 declare write_tables text[] := array[
   'records','intake_batches','files','products','lots','suppliers','fispq',
   'licenses','customers','orders','order_items','order_documents','vehicles',
-  'vehicle_documents','vehicle_maintenance','routes','route_stops',
+  'vehicle_documents','vehicle_maintenance','drivers','routes','route_stops',
   'route_events','erp_integrations','profitability_entries'];
 begin
   foreach t in array write_tables loop

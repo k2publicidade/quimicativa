@@ -177,6 +177,7 @@ export const customers = sqliteTable("customers", {
   city: text("city"),
   state: text("state"),
   zipCode: text("zip_code"),
+  receivingWindow: text("receiving_window").notNull().default(""),
   contactName: text("contact_name"),
   contactEmail: text("contact_email"),
   contactPhone: text("contact_phone"),
@@ -215,6 +216,7 @@ export const orderItems = sqliteTable("order_items", {
   packageType: text("package_type").notNull().default(""),
   packageUnitWeightKg: real("package_unit_weight_kg").notNull().default(0),
   weightKg: real("weight_kg").notNull().default(0),
+  volumeM3: real("volume_m3").notNull().default(0),
   lotNumber: text("lot_number"),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -248,6 +250,7 @@ export const vehicles = sqliteTable("vehicles", {
   modelYear: integer("model_year"),
   vehicleType: text("vehicle_type").notNull().default("Caminhão"),
   capacityKg: integer("capacity_kg"),
+  capacityM3: real("capacity_m3"),
   odometerKm: integer("odometer_km").notNull().default(0),
   maintIntervalKm: integer("maint_interval_km"),
   maintIntervalMonths: integer("maint_interval_months"),
@@ -294,11 +297,28 @@ export const vehicleMaintenance = sqliteTable("vehicle_maintenance", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 }, table => [index("idx_vehicle_maint_vehicle").on(table.vehicleId), index("idx_vehicle_maint_date").on(table.serviceDate)]);
 
+export const drivers = sqliteTable("drivers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  cpf: text("cpf").unique(),
+  phone: text("phone"),
+  licenseNumber: text("license_number"),
+  licenseCategory: text("license_category"),
+  licenseExpiry: integer("license_expiry", { mode: "timestamp" }),
+  moppExpiry: integer("mopp_expiry", { mode: "timestamp" }),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+}, table => [index("idx_drivers_status").on(table.status), index("idx_drivers_expiry").on(table.licenseExpiry, table.moppExpiry)]);
+
 export const routes = sqliteTable("routes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   code: text("code").notNull().unique(),
   name: text("name").notNull(),
   vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id),
+  driverId: integer("driver_id").references(() => drivers.id),
   driverName: text("driver_name").notNull().default(""),
   routeDate: integer("route_date", { mode: "timestamp" }).notNull(),
   originAddress: text("origin_address").notNull().default(""),
@@ -309,7 +329,7 @@ export const routes = sqliteTable("routes", {
   createdBy: text("created_by").references(() => users.id),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-}, table => [index("idx_routes_vehicle_date").on(table.vehicleId, table.routeDate), index("idx_routes_status").on(table.status)]);
+}, table => [index("idx_routes_vehicle_date").on(table.vehicleId, table.routeDate), index("idx_routes_driver_date").on(table.driverId, table.routeDate), index("idx_routes_status").on(table.status)]);
 
 export const routeStops = sqliteTable("route_stops", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -320,6 +340,8 @@ export const routeStops = sqliteTable("route_stops", {
   addressSnapshot: text("address_snapshot").notNull().default(""),
   weightKg: real("weight_kg").notNull().default(0),
   packageSummary: text("package_summary").notNull().default(""),
+  volumeM3: real("volume_m3").notNull().default(0),
+  receivingWindow: text("receiving_window").notNull().default(""),
   deliveredAt: integer("delivered_at", { mode: "timestamp" }),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -356,6 +378,7 @@ export const profitabilityEntries = sqliteTable("profitability_entries", {
   deliveryCount: integer("delivery_count").notNull().default(1),
   averagePaymentDays: real("average_payment_days"),
   source: text("source").notNull().default("manual"),
+  sourceKey: text("source_key").unique(),
   notes: text("notes"),
   createdBy: text("created_by").references(() => users.id),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),

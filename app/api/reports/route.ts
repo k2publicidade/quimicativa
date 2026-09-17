@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import type { Color } from "pdf-lib";
 import { getD1 } from "../../../db";
 import { canValidate, getActor } from "../authz";
 
@@ -105,7 +106,7 @@ async function drawTable(
   width: number,
   columns: { label: string; width: number }[],
   rows: string[][],
-  rowColors: (string | undefined)[] = [],
+  rowColors: (Color | undefined)[] = [],
 ) {
   const left = 48,
     headerH = 26,
@@ -500,7 +501,7 @@ export async function GET(request: NextRequest) {
   }
   const bytes = await doc.save(),
     filename = `${type}-${new Date().toISOString().slice(0, 10)}.pdf`;
-  return new Response(bytes, {
+  return new Response(Uint8Array.from(bytes).buffer, {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Length": String(bytes.byteLength),

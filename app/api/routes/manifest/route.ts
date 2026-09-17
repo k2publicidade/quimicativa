@@ -4,17 +4,18 @@ import { getD1 } from "../../../../db";
 import { getActor } from "../../authz";
 
 type RouteRow = {
-  id: number; code: string; name: string; driver_name: string; route_date: number;
+  id: number; code: string; name: string; vehicle_id: number; driver_id: number | null; driver_name: string; route_date: number;
   origin_address: string; planned_km: number; estimated_cost_cents: number;
-  plate: string; model: string; capacity_kg: number | null;
+  plate: string; model: string; capacity_kg: number | null; capacity_m3: number | null;
 };
 type StopRow = {
   id: number; order_id: number; sequence: number; address_snapshot: string; weight_kg: number;
-  package_summary: string; order_number: string; payment_terms: string; customer_name: string;
+  package_summary: string; receiving_window: string; order_number: string; payment_terms: string; customer_name: string;
 };
 type ItemRow = {
   order_id: number; product_name: string; quantity: number; unit: string; package_count: number;
-  package_type: string; package_unit_weight_kg: number; weight_kg: number;
+  package_type: string; package_unit_weight_kg: number; weight_kg: number; volume_m3: number; un_number: string;
+  hazard_class: string; flammable: number; controlled: number;
 };
 
 const toPdf = (value: string) => value
@@ -44,15 +45,18 @@ export async function GET(request: NextRequest) {
   const routeId = Number(request.nextUrl.searchParams.get("id"));
   if (!Number.isInteger(routeId) || routeId <= 0) return NextResponse.json({ error: "Rota inválida" }, { status: 400 });
   const db = getD1();
-  const route = await db.prepare(`SELECT r.*,v.plate,v.model,v.capacity_kg FROM routes r JOIN vehicles v ON v.id=r.vehicle_id WHERE r.id=?`).bind(routeId).first<RouteRow>();
+  const route = await db.prepare(`SELECT r.*,v.plate,v.model,v.capacity_kg,v.capacity_m3 FROM routes r JOIN vehicles v ON v.id=r.vehicle_id WHERE r.id=?`).bind(routeId).first<RouteRow>();
   if (!route) return NextResponse.json({ error: "Rota não encontrada" }, { status: 404 });
   const stops = await db.prepare(`SELECT s.*,o.number AS order_number,o.payment_terms,c.company_name AS customer_name FROM route_stops s JOIN orders o ON o.id=s.order_id JOIN customers c ON c.id=o.customer_id WHERE s.route_id=? ORDER BY s.sequence`).bind(routeId).all<StopRow>();
   const orderIds = stops.results.map(stop => stop.order_id);
   const items = orderIds.length
-    ? await db.prepare(`SELECT order_id,product_name,quantity,unit,package_count,package_type,package_unit_weight_kg,weight_kg FROM order_items WHERE order_id IN (${orderIds.map(() => "?").join(",")}) ORDER BY id`).bind(...orderIds).all<ItemRow>()
+    ? await db.prepare(`SELECT oi.order_id,oi.product_name,oi.quantity,oi.unit,oi.package_count,oi.package_type,oi.package_unit_weight_kg,oi.weight_kg,oi.volume_m3,COALESCE(p.un_number,'') AS un_number,COALESCE(p.hazard_class,'') AS hazard_class,COALESCE(p.flammable,0) AS flammable,COALESCE(p.controlled,0) AS controlled FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id IN (${orderIds.map(() => "?").join(",")}) ORDER BY oi.id`).bind(...orderIds).all<ItemRow>()
     : { results: [] as ItemRow[] };
   const itemsByOrder = new Map<number, ItemRow[]>();
   items.results.forEach(item => itemsByOrder.set(item.order_id, [...(itemsByOrder.get(item.order_id) ?? []), item]));
+  const hazardousLoad = items.results.some(item => item.un_number || item.hazard_class || item.flammable || item.controlled);
+  const driver = hazardousLoad && route.driver_id ? await db.prepare("SELECT mopp_expiry FROM drivers WHERE id=?").bind(route.driver_id).first<{ mopp_expiry: number | null }>() : null;
+  const hasValidMopp = Boolean(driver?.mopp_expiry && driver.mopp_expiry >= route.route_date);
 
   const document = await PDFDocument.create();
   const font = await document.embedFont(StandardFonts.Helvetica);
@@ -84,19 +88,31 @@ export async function GET(request: NextRequest) {
   y -= 22;
 
   const totalWeight = stops.results.reduce((sum, stop) => sum + Number(stop.weight_kg || 0), 0);
+  const totalVolumeM3 = items.results.reduce((sum, item) => sum + Number(item.volume_m3 || 0), 0);
+  const volumeDataComplete = items.results.length > 0 && items.results.every(item => Number(item.volume_m3) > 0);
   const occupancy = route.capacity_kg ? totalWeight / route.capacity_kg * 100 : null;
-  page.drawRectangle({ x: 38, y: y - 34, width: 765, height: 42, color: rgb(0.95, 0.97, 0.98) });
+  page.drawRectangle({ x: 38, y: y - 46, width: 765, height: 54, color: rgb(0.95, 0.97, 0.98) });
   text(`Carga total: ${number(totalWeight, 1)} kg`, 52, 10, true);
   text(`Capacidade: ${route.capacity_kg ? `${number(route.capacity_kg, 1)} kg` : "não cadastrada"}`, 275, 9);
-  text(`Ocupação: ${occupancy === null ? "-" : `${number(occupancy, 0)}%`}`, 500, 9);
+  text(`Ocupação por peso: ${occupancy === null ? "-" : `${number(occupancy, 0)}%`}`, 500, 9);
   text(`${stops.results.length} entrega(s)`, 680, 9, true);
-  y -= 54;
+  y -= 14;
+  text(volumeDataComplete ? `Cubagem: ${number(totalVolumeM3, 3)} m³${route.capacity_m3 ? ` de ${number(route.capacity_m3, 3)} m³ (${number(totalVolumeM3 / route.capacity_m3 * 100, 0)}%)` : ""}` : "Cubagem: dados incompletos — conferir volumes antes do carregamento", 52, 8, true, volumeDataComplete ? muted : rgb(0.66, 0.29, 0.08));
+  y -= 52;
+
+  if (hazardousLoad) {
+    page.drawRectangle({ x: 38, y: y - 32, width: 765, height: 40, color: rgb(1, 0.97, 0.9), borderColor: rgb(0.9, 0.72, 0.35), borderWidth: 1 });
+    text("CARGA COM PRODUTO PERIGOSO", 52, 9, true, rgb(0.47, 0.31, 0.06));
+    y -= 14;
+    text(`Conferir documentação, sinalização, segregação e ficha de emergência. MOPP do motorista: ${hasValidMopp ? "comprovante localizado" : "confirmar antes da saída"}.`, 52, 8, false, rgb(0.47, 0.31, 0.06));
+    y -= 38;
+  }
 
   for (const stop of stops.results) {
     const orderItems = itemsByOrder.get(stop.order_id) ?? [];
-    const itemLines = orderItems.flatMap(item => wrap(`${item.product_name}: ${number(item.quantity, 2)} ${item.unit}${item.package_count && item.package_type ? ` - ${number(item.package_count)} ${item.package_type}${item.package_unit_weight_kg ? ` de ${number(item.package_unit_weight_kg, 1)} kg` : ""}` : ""}${item.weight_kg ? ` - ${number(item.weight_kg, 1)} kg` : ""}`, 91));
+    const itemLines = orderItems.flatMap(item => wrap(`${item.product_name}: ${number(item.quantity, 2)} ${item.unit}${item.package_count && item.package_type ? ` - ${number(item.package_count)} ${item.package_type}${item.package_unit_weight_kg ? ` de ${number(item.package_unit_weight_kg, 1)} kg` : ""}` : ""}${item.weight_kg ? ` - ${number(item.weight_kg, 1)} kg` : ""}${item.volume_m3 ? ` - ${number(item.volume_m3, 3)} m³` : " - cubagem não informada"}${item.un_number ? ` - ONU ${item.un_number}` : ""}${item.hazard_class ? ` - classe ${item.hazard_class}` : ""}`, 91));
     const addressLines = wrap(stop.address_snapshot || "Endereço não cadastrado", 72);
-    const blockHeight = 52 + (addressLines.length + itemLines.length) * 10;
+    const blockHeight = 62 + (addressLines.length + itemLines.length) * 10;
     ensureSpace(blockHeight);
     page.drawRectangle({ x: 38, y: y - blockHeight + 8, width: 765, height: blockHeight, borderColor: line, borderWidth: 1 });
     page.drawCircle({ x: 58, y: y - 10, size: 13, color: accent });
@@ -106,6 +122,8 @@ export async function GET(request: NextRequest) {
     y -= 17;
     addressLines.forEach(value => { text(value, 82, 8, false, muted); y -= 10; });
     text(`Pagamento: ${stop.payment_terms || "não informado"}`, 82, 8, true, muted);
+    y -= 13;
+    text(`Recebimento: ${stop.receiving_window || "sem restrição informada"}`, 82, 8, true, muted);
     y -= 13;
     (itemLines.length ? itemLines : [stop.package_summary || "Itens não informados"]).forEach(value => { text(value, 82, 8); y -= 10; });
     y -= 18;

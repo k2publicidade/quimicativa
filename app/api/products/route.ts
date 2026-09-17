@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getD1 } from "../../../db";
-import { canWrite, getActor } from "../authz";
+import { canValidate, getActor } from "../authz";
 
 type ProductRow = {
   id: number;
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
   const actor = await getActor();
   if (!actor)
     return NextResponse.json({ error: "Acesso não autorizado" }, { status: 401 });
-  if (!canWrite(actor))
+  if (!canValidate(actor))
     return NextResponse.json(
       { error: "Seu perfil possui acesso somente para consulta" },
       { status: 403 },
@@ -281,7 +281,7 @@ export async function PUT(request: NextRequest) {
   const actor = await getActor();
   if (!actor)
     return NextResponse.json({ error: "Acesso não autorizado" }, { status: 401 });
-  if (!canWrite(actor))
+  if (!canValidate(actor))
     return NextResponse.json(
       { error: "Seu perfil possui acesso somente para consulta" },
       { status: 403 },
@@ -368,4 +368,21 @@ export async function PUT(request: NextRequest) {
     )
     .run();
   return NextResponse.json({ product: serializeProduct(updated) });
+}
+
+export async function DELETE(request: NextRequest) {
+  const actor = await getActor();
+  if (!actor) return NextResponse.json({ error: "Acesso não autorizado" }, { status: 401 });
+  if (!canValidate(actor)) return NextResponse.json({ error: "Somente direção e gestores podem excluir produtos" }, { status: 403 });
+  const id = Number(request.nextUrl.searchParams.get("id"));
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Produto inválido" }, { status: 400 });
+  const db = getD1(), current = await db.prepare("SELECT * FROM products WHERE id=?").bind(id).first<ProductRow>();
+  if (!current) return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
+  const refs = await db.prepare("SELECT (SELECT COUNT(*) FROM order_items WHERE product_id=?) + (SELECT COUNT(*) FROM lots WHERE product_id=?) + (SELECT COUNT(*) FROM fispq WHERE product_id=?) total").bind(id, id, id).first<{ total: number }>();
+  const now = Math.floor(Date.now() / 1000), archived = Number(refs?.total || 0) > 0;
+  if (archived) await db.prepare("UPDATE products SET status='inactive',updated_at=? WHERE id=?").bind(now, id).run();
+  else await db.prepare("DELETE FROM products WHERE id=?").bind(id).run();
+  await db.prepare("INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,?,?,?,?,?)")
+    .bind(actor.userId, archived ? "archive" : "delete", "product", String(id), JSON.stringify({ name: current.name, reason: archived ? "Produto possui histórico vinculado" : "Sem vínculos operacionais" }), now).run();
+  return NextResponse.json({ ok: true, archived });
 }

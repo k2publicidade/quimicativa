@@ -154,7 +154,7 @@ const departments: Record<string, Department> = {
     name: "Frota",
     eyebrow: "VEÍCULOS, DOCUMENTOS E MANUTENÇÕES",
     summary:
-      "Cadastre os caminhões, acompanhe validade de CRLV, seguro e MOPP, e controle as manutenções periódicas por km e por tempo.",
+      "Cadastre caminhões e motoristas, acompanhe CRLV, seguro, CNH e MOPP, e controle manutenções por km e por tempo.",
     color: "#0e8f7a",
     modules: [],
   },
@@ -273,7 +273,8 @@ export default function Dashboard() {
     [records, setRecords] = useState<RecordItem[]>([]),
     [loading, setLoading] = useState(false),
     [drawer, setDrawer] = useState<DrawerState | null>(null),
-    [toast, setToast] = useState("");
+    [toast, setToast] = useState(""),
+    [routeDraftOrderId, setRouteDraftOrderId] = useState<number | null>(null);
   const [profile, setProfile] = useState({ name: "Usuário", role: "viewer" });
   const [attentionTotal, setAttentionTotal] = useState<number | null>(null);
   useEffect(() => {
@@ -512,13 +513,13 @@ export default function Dashboard() {
           ) : active === "digitalizacao" ? (
             <DocumentCenter notify={notify} />
           ) : active === "produtos" ? (
-            <ProductCenter notify={notify} canExport={profile.role !== "viewer"} />
+            <ProductCenter notify={notify} canExport={profile.role !== "viewer"} canManage={profile.role === "ceo" || profile.role === "manager"} />
           ) : active === "pedidos" ? (
-            <PedidosCenter notify={notify} canWrite={profile.role !== "viewer"} />
+            <PedidosCenter notify={notify} canWrite={profile.role !== "viewer"} onBuildRoute={(orderId) => { setRouteDraftOrderId(orderId); switchArea("logistica"); }} />
           ) : active === "frota" ? (
             <FleetCenter notify={notify} canWrite={profile.role !== "viewer"} />
           ) : active === "logistica" ? (
-            <LogisticsCenter notify={notify} canWrite={profile.role !== "viewer"} />
+            <LogisticsCenter notify={notify} canWrite={profile.role !== "viewer"} initialOrderId={routeDraftOrderId} onInitialOrderConsumed={() => setRouteDraftOrderId(null)} />
           ) : selectedModule?.name === "DRE e Relatórios" ? (
             <ProfitabilityCenter notify={notify} canWrite={profile.role !== "viewer"} />
           ) : selectedModule ? (

@@ -318,6 +318,7 @@ create table if not exists customers (
   city               text,
   state              text,
   zip_code           text,
+  receiving_window   text not null default '',
   contact_name       text,
   contact_email      text,
   contact_phone      text,
@@ -423,6 +424,7 @@ create table if not exists vehicles (
   model_year            integer,
   vehicle_type          text not null default 'Caminhão',
   capacity_kg           integer,
+  capacity_m3           numeric(10,3),
   odometer_km           integer not null default 0,
   maint_interval_km     integer,
   maint_interval_months integer,
@@ -475,11 +477,30 @@ create table if not exists vehicle_maintenance (
 create index if not exists idx_vehicle_maint_vehicle on vehicle_maintenance(vehicle_id);
 create index if not exists idx_vehicle_maint_date    on vehicle_maintenance(service_date);
 
+create table if not exists drivers (
+  id               uuid primary key default gen_random_uuid(),
+  name             text not null,
+  cpf              text unique,
+  phone            text,
+  license_number   text,
+  license_category text,
+  license_expiry   date,
+  mopp_expiry      date,
+  status           record_status not null default 'active',
+  notes            text,
+  created_by       uuid references users(id),
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+create index if not exists idx_drivers_status on drivers(status);
+create index if not exists idx_drivers_expiry on drivers(license_expiry, mopp_expiry);
+
 create table if not exists routes (
   id                   uuid primary key default gen_random_uuid(),
   code                 text not null unique,
   name                 text not null,
   vehicle_id           uuid not null references vehicles(id),
+  driver_id            uuid references drivers(id),
   driver_name          text not null default '',
   route_date           date not null,
   origin_address       text not null default '',
@@ -492,6 +513,7 @@ create table if not exists routes (
   updated_at           timestamptz not null default now()
 );
 create index if not exists idx_routes_vehicle_date on routes(vehicle_id, route_date);
+create index if not exists idx_routes_driver_date  on routes(driver_id, route_date);
 create index if not exists idx_routes_status        on routes(status);
 
 create table if not exists route_stops (
@@ -503,6 +525,7 @@ create table if not exists route_stops (
   address_snapshot text not null default '',
   weight_kg        numeric(10,3) not null default 0,
   package_summary  text not null default '',
+  receiving_window text not null default '',
   delivered_at     timestamptz,
   notes            text,
   created_at       timestamptz not null default now(),
@@ -510,6 +533,11 @@ create table if not exists route_stops (
 );
 create index if not exists idx_route_stops_route_sequence on route_stops(route_id, sequence);
 create index if not exists idx_route_stops_order           on route_stops(order_id);
+alter table customers add column if not exists receiving_window text not null default '';
+alter table route_stops add column if not exists receiving_window text not null default '';
+alter table vehicles add column if not exists capacity_m3 numeric(10,3);
+alter table order_items add column if not exists volume_m3 numeric(10,3) not null default 0;
+alter table route_stops add column if not exists volume_m3 numeric(10,3) not null default 0;
 
 create table if not exists route_events (
   id          uuid primary key default gen_random_uuid(),
@@ -544,6 +572,7 @@ create table if not exists profitability_entries (
   delivery_count       integer not null default 1,
   average_payment_days numeric(6,2),
   source               text not null default 'manual',
+  source_key           text,
   notes                text,
   created_by           uuid references users(id),
   created_at           timestamptz not null default now()
@@ -551,6 +580,8 @@ create table if not exists profitability_entries (
 create index if not exists idx_profitability_period   on profitability_entries(period);
 create index if not exists idx_profitability_customer on profitability_entries(customer_id);
 create index if not exists idx_profitability_route    on profitability_entries(route_id);
+alter table profitability_entries add column if not exists source_key text;
+create unique index if not exists idx_profitability_source_key on profitability_entries(source_key) where source_key is not null;
 
 create table if not exists receivables (
   id           uuid primary key default gen_random_uuid(),

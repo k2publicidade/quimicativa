@@ -11,7 +11,7 @@ const eslintConfig = defineConfig([
       'react-hooks/purity': 'off',
     },
   },
-  globalIgnores(['.next/**', 'out/**', 'build/**', 'node_modules.corrupt/**', 'next-env.d.ts']),
+  globalIgnores(['.next/**', 'out/**', 'build/**', 'public/**', 'node_modules.corrupt/**', 'next-env.d.ts']),
 ]);
 
 export default eslintConfig;
