@@ -166,10 +166,14 @@ export default function PedidosCenter({
   notify,
   canWrite = true,
   onBuildRoute,
+  initialOpenOrderId = null,
+  onInitialOpenConsumed,
 }: {
   notify: (message: string) => void;
   canWrite?: boolean;
   onBuildRoute?: (orderId: number) => void;
+  initialOpenOrderId?: number | null;
+  onInitialOpenConsumed?: () => void;
 }) {
   const [tab, setTab] = useState<"orders" | "customers">("orders");
   const [orders, setOrders] = useState<OrderSummary[]>([]);
@@ -177,6 +181,13 @@ export default function PedidosCenter({
   const [products, setProducts] = useState<ProductLight[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!initialOpenOrderId) return;
+    setTab("orders");
+    setOpenId(initialOpenOrderId);
+    onInitialOpenConsumed?.();
+  }, [initialOpenOrderId, onInitialOpenConsumed]);
 
   const loadOrders = useCallback(async () => {
     try {

@@ -34,7 +34,9 @@ const routeUtilization = (route: Pick<Route, "occupancy" | "volumeOccupancy" | "
   return { effective, limitingFactor };
 };
 
-export default function LogisticsCenter({ notify, canWrite, initialOrderId = null, onInitialOrderConsumed, onManageDrivers }: { notify: (message: string) => void; canWrite: boolean; initialOrderId?: number | null; onInitialOrderConsumed?: () => void; onManageDrivers?: () => void }) {
+const ROUTE_DRAFT_KEY = "quimicativa:route-draft";
+
+export default function LogisticsCenter({ notify, canWrite, initialOrderId = null, onInitialOrderConsumed, onEditOrder, onManageDrivers }: { notify: (message: string) => void; canWrite: boolean; initialOrderId?: number | null; onInitialOrderConsumed?: () => void; onEditOrder?: (orderId: number | null) => void; onManageDrivers?: () => void }) {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -49,6 +51,33 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
   const [plannedKm, setPlannedKm] = useState("");
   const [estimatedCost, setEstimatedCost] = useState("");
   const [saving, setSaving] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(ROUTE_DRAFT_KEY);
+      if (saved) {
+        const draft = JSON.parse(saved) as Partial<{ vehicleId: string; orderIds: number[]; name: string; driverId: string; routeDate: string; originAddress: string; plannedKm: string; estimatedCost: string }>;
+        setVehicleId(draft.vehicleId ?? "");
+        setOrderIds(Array.isArray(draft.orderIds) ? draft.orderIds : []);
+        setName(draft.name ?? "");
+        setDriverId(draft.driverId ?? "");
+        setRouteDate(draft.routeDate ?? new Date().toISOString().slice(0, 10));
+        setOriginAddress(draft.originAddress ?? "");
+        setPlannedKm(draft.plannedKm ?? "");
+        setEstimatedCost(draft.estimatedCost ?? "");
+      }
+    } catch {
+      sessionStorage.removeItem(ROUTE_DRAFT_KEY);
+    } finally {
+      setDraftReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    sessionStorage.setItem(ROUTE_DRAFT_KEY, JSON.stringify({ vehicleId, orderIds, name, driverId, routeDate, originAddress, plannedKm, estimatedCost }));
+  }, [draftReady, vehicleId, orderIds, name, driverId, routeDate, originAddress, plannedKm, estimatedCost]);
 
   const load = async () => {
     const [routesResponse, ordersResponse, vehiclesResponse, driversResponse] = await Promise.all([
@@ -105,8 +134,8 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
     const order = activeOrders.find(item => item.id === initialOrderId);
     if (!order) return;
     setOrderIds([order.id]);
-    setName(`Entrega ${order.number}${order.customerCity ? ` — ${order.customerCity}` : ""}`);
-    setRouteDate(order.deliveryDate || new Date().toISOString().slice(0, 10));
+    setName(current => current || `Entrega ${order.number}${order.customerCity ? ` — ${order.customerCity}` : ""}`);
+    setRouteDate(current => current || order.deliveryDate || new Date().toISOString().slice(0, 10));
     setOriginAddress(current => current || "Rua Isidro Rocha, 48 — Vigário Geral — Rio de Janeiro/RJ — 21241-180");
     onInitialOrderConsumed?.();
   }, [initialOrderId, activeOrders, onInitialOrderConsumed]);
@@ -170,6 +199,7 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
       setOriginAddress("");
       setPlannedKm("");
       setEstimatedCost("");
+      sessionStorage.removeItem(ROUTE_DRAFT_KEY);
       await load();
       if (data.route) setSelected(data.route.id);
     } catch (error) {
@@ -181,7 +211,7 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
 
   return <div className="logistics-center">
     <section className="operation-flow logistics-flow" aria-label="Fluxo operacional">
-      <div className="done"><b>✓</b><span><strong>Pedido montado</strong><small>Dados comerciais e carga</small></span></div><i>→</i>
+      <button type="button" className="done flow-step-button" onClick={() => onEditOrder?.(orderIds.length === 1 ? orderIds[0] : null)} disabled={!onEditOrder}><b>✓</b><span><strong>Pedido montado</strong><small>{orderIds.length === 1 ? "Revisar e editar dados comerciais e carga" : "Voltar aos pedidos"}</small></span><em>Editar</em></button><i>→</i>
       <div className="active"><b>2</b><span><strong>Montar rota</strong><small>Escalar caminhão e motorista</small></span></div><i>→</i>
       <div><b>3</b><span><strong>Imprimir romaneio</strong><small>Entregar à expedição e ao motorista</small></span></div>
     </section>
