@@ -67,6 +67,48 @@
 .migration-hero { background: linear-gradient(115deg, var(--brand-navy-deep), var(--brand-teal)) !important; }
 .product-tab.active { background: var(--brand-navy) !important; }
 
+.fleet-hero-driver-button {
+  align-self: center;
+  border: 1px solid #ffffff66;
+  background: #ffffff14;
+  color: #fff;
+  border-radius: 9px;
+  padding: 11px 15px;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.fleet-hero-driver-button:hover { background: #ffffff25; }
+.manage-drivers-link {
+  border: 1px solid #c9d9e8;
+  background: #f5f9fc;
+  color: var(--brand-navy);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 8px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.driver-empty-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0 4px;
+  padding: 11px 12px;
+  border: 1px solid #d7e5ef;
+  border-radius: 9px;
+  background: #f3f8fb;
+}
+
+.driver-empty-alert strong,
+.driver-empty-alert small { display: block; }
+.driver-empty-alert strong { color: var(--brand-navy-deep); font-size: 9px; }
+.driver-empty-alert small { margin-top: 3px; color: #6e8296; font-size: 7px; line-height: 1.4; }
+.driver-empty-alert button { border: 0; border-radius: 7px; background: var(--brand-teal); color: #fff; padding: 8px 10px; font-size: 8px; font-weight: 800; white-space: nowrap; }
+
 .login-shell {
   min-height: 100vh;
   display: grid;

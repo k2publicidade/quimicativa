@@ -34,7 +34,7 @@ const routeUtilization = (route: Pick<Route, "occupancy" | "volumeOccupancy" | "
   return { effective, limitingFactor };
 };
 
-export default function LogisticsCenter({ notify, canWrite, initialOrderId = null, onInitialOrderConsumed }: { notify: (message: string) => void; canWrite: boolean; initialOrderId?: number | null; onInitialOrderConsumed?: () => void }) {
+export default function LogisticsCenter({ notify, canWrite, initialOrderId = null, onInitialOrderConsumed, onManageDrivers }: { notify: (message: string) => void; canWrite: boolean; initialOrderId?: number | null; onInitialOrderConsumed?: () => void; onManageDrivers?: () => void }) {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -193,7 +193,7 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
 
     <div className="logistics-grid">
       {canWrite && <form className="panel route-builder" onSubmit={create}>
-        <div className="panel-heading"><div><h2>Montar nova rota</h2><p>Selecione o caminhão, a base de saída e os pedidos do dia.</p></div></div>
+        <div className="panel-heading"><div><h2>Montar nova rota</h2><p>Selecione o caminhão, o motorista, a base de saída e os pedidos do dia.</p></div>{onManageDrivers && <button type="button" className="manage-drivers-link" onClick={onManageDrivers}>Gerenciar motoristas</button>}</div>
         <label>Caminhão
           <select required value={vehicleId} onChange={event => setVehicleId(event.target.value)}>
             <option value="">Selecione um caminhão</option>
@@ -210,6 +210,7 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
             {drivers.filter(driver => driver.status === "active").map(driver => <option key={driver.id} value={driver.id}>{driver.name}{driver.licenseCategory ? ` · CNH ${driver.licenseCategory}` : ""}{driver.alerts.length ? ` · ${driver.alerts.join(", ")}` : ""}</option>)}
           </select>
         </label>
+        {!drivers.length && onManageDrivers && <div className="driver-empty-alert"><div><strong>Nenhum motorista cadastrado</strong><small>Cadastre o condutor, a CNH e a validade do MOPP antes de montar a rota.</small></div><button type="button" onClick={onManageDrivers}>Cadastrar motorista</button></div>}
         <label>Ponto de partida / depósito
           <input required value={originAddress} onChange={event => setOriginAddress(event.target.value)} placeholder="Rua, número, cidade, estado e CEP" />
         </label>

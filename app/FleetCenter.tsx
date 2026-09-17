@@ -153,11 +153,13 @@ function Modal({
 export default function FleetCenter({
   notify,
   canWrite = true,
+  initialTab = "vehicles",
 }: {
   notify: (message: string) => void;
   canWrite?: boolean;
+  initialTab?: "vehicles" | "drivers" | "maintenance";
 }) {
-  const [tab, setTab] = useState<"vehicles" | "drivers" | "maintenance">("vehicles");
+  const [tab, setTab] = useState<"vehicles" | "drivers" | "maintenance">(initialTab);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [summary, setSummary] = useState({
     total: 0,
@@ -207,6 +209,10 @@ export default function FleetCenter({
     );
   }, [loadVehicles, loadMaintenance, loadDrivers]);
 
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+
   const reloadAll = useCallback(async () => {
     await Promise.all([loadVehicles(), loadMaintenance(), loadDrivers()]);
   }, [loadVehicles, loadMaintenance, loadDrivers]);
@@ -230,6 +236,11 @@ export default function FleetCenter({
             e por tempo — com alerta antes de vencer.
           </p>
         </div>
+        {canWrite && (
+          <button className="fleet-hero-driver-button" onClick={() => setTab("drivers")}>
+            Gerenciar motoristas
+          </button>
+        )}
       </section>
       <section className="ord-kpis">
         <article>

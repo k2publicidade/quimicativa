@@ -277,6 +277,7 @@ export default function Dashboard() {
     [toast, setToast] = useState(""),
     [routeDraftOrderId, setRouteDraftOrderId] = useState<number | null>(null);
   const [profile, setProfile] = useState({ name: "Usuário", role: "viewer" });
+  const [fleetInitialTab, setFleetInitialTab] = useState<"vehicles" | "drivers" | "maintenance">("vehicles");
   const [attentionTotal, setAttentionTotal] = useState<number | null>(null);
   useEffect(() => {
     let mounted = true;
@@ -535,9 +536,9 @@ export default function Dashboard() {
           ) : active === "pedidos" ? (
             <PedidosCenter notify={notify} canWrite={profile.role !== "viewer"} onBuildRoute={(orderId) => { setRouteDraftOrderId(orderId); switchArea("logistica"); }} />
           ) : active === "frota" ? (
-            <FleetCenter notify={notify} canWrite={profile.role !== "viewer"} />
+            <FleetCenter notify={notify} canWrite={profile.role !== "viewer"} initialTab={fleetInitialTab} />
           ) : active === "logistica" ? (
-            <LogisticsCenter notify={notify} canWrite={profile.role !== "viewer"} initialOrderId={routeDraftOrderId} onInitialOrderConsumed={() => setRouteDraftOrderId(null)} />
+            <LogisticsCenter notify={notify} canWrite={profile.role !== "viewer"} initialOrderId={routeDraftOrderId} onInitialOrderConsumed={() => setRouteDraftOrderId(null)} onManageDrivers={() => { setFleetInitialTab("drivers"); switchArea("fleet"); }} />
           ) : selectedModule?.name === "DRE e Relatórios" ? (
             <ProfitabilityCenter notify={notify} canWrite={profile.role !== "viewer"} />
           ) : selectedModule ? (
