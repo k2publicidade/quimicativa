@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope } from "next/font/google";
 import "./globals.css";
+import "./brand.css";
 import "./module.css";
 import "./documents.css";
 import "./products.css";
@@ -17,7 +18,7 @@ import "./fleet.css";
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://quimicativa-gestao.dudinha5896458754.chatgpt.site"),
+  metadataBase: new URL("https://quimicativa.vercel.app"),
   title: "Quimicativa | Gestão Integrada",
   description: "Central executiva para gestão de pessoas, operações, vendas e finanças da Quimicativa.",
   openGraph: {
@@ -31,6 +32,11 @@ export const metadata: Metadata = {
     title: "Quimicativa | Gestão Integrada",
     description: "Gestão integrada, decisões mais inteligentes.",
     images: ["/og.png"],
+  },
+  icons: {
+    icon: "/brand/quimicativa-logo.png",
+    shortcut: "/brand/quimicativa-logo.png",
+    apple: "/brand/quimicativa-logo.png",
   },
 };
 

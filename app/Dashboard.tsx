@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getModuleConfig } from "./module-config";
 import DocumentCenter, { RecordDocuments } from "./DocumentCenter";
@@ -403,11 +404,15 @@ export default function Dashboard() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">Q</span>
-          <div>
-            <strong>Quimicativa</strong>
-            <small>Gestão integrada</small>
-          </div>
+          <Image
+            className="brand-logo brand-logo-sidebar"
+            src="/brand/quimicativa-logo-white.png"
+            alt="Quimicativa Distribuidora"
+            width={223}
+            height={64}
+            priority
+          />
+          <small className="brand-product">Gestão integrada</small>
         </div>
         <nav aria-label="Navegação principal">
           <p className="nav-label">MENU PRINCIPAL</p>

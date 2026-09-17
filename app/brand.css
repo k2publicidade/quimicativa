@@ -1,0 +1,122 @@
+/* Identidade visual oficial Quimicativa */
+:root {
+  --brand-navy: #193b68;
+  --brand-navy-deep: #102b4d;
+  --brand-teal: #087d8f;
+  --brand-teal-dark: #066575;
+  --navy: var(--brand-navy-deep);
+  --ink: #172b46;
+  --bg: #f4f7fa;
+  --line: #e2e9f0;
+}
+
+.sidebar {
+  background: linear-gradient(180deg, var(--brand-navy) 0%, var(--brand-navy-deep) 100%);
+  box-shadow: 10px 0 34px #0d294518;
+}
+
+.brand {
+  display: block;
+  padding: 2px 10px 27px;
+  border-bottom: 1px solid #ffffff17;
+  margin-bottom: 15px;
+}
+
+.brand-logo {
+  display: block;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.brand-logo-sidebar {
+  width: 174px;
+  height: auto;
+}
+
+.brand-product {
+  display: block !important;
+  margin-top: 9px !important;
+  color: #a9c1d8 !important;
+  font-size: 8px !important;
+  letter-spacing: 1.45px;
+  text-transform: uppercase;
+  font-weight: 750;
+}
+
+.nav-label { color: #8eabc4; }
+.nav-item { color: #b9cada; }
+.nav-item:hover,
+.nav-item.active { background: #ffffff12; color: #fff; }
+.nav-item.active { box-shadow: inset 3px 0 var(--brand-teal); }
+.nav-item.active span { background: var(--brand-teal); border-color: var(--brand-teal); }
+.nav-item span { border-color: #ffffff2b; }
+
+.primary-button {
+  background: linear-gradient(135deg, var(--brand-navy), #24558d);
+  box-shadow: 0 7px 18px #193b6828;
+}
+
+.primary-button:hover {
+  background: linear-gradient(135deg, #15345d, var(--brand-teal-dark));
+}
+
+.link-button,
+.back-button { color: var(--brand-navy); }
+.avatar { background: #e4edf7; color: var(--brand-navy); }
+.search:focus-within { border-color: #86a7c7; box-shadow: 0 0 0 3px #193b6810; background: #fff; }
+.migration-hero { background: linear-gradient(115deg, var(--brand-navy-deep), var(--brand-teal)) !important; }
+.product-tab.active { background: var(--brand-navy) !important; }
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: radial-gradient(circle at 78% 16%, #0b7b8b22 0, transparent 32%), linear-gradient(145deg, #eef4f8 0%, #f8fafc 48%, #e6eef5 100%);
+}
+
+.login-card {
+  width: min(440px, 100%);
+  background: #fff;
+  border: 1px solid #dfe8f0;
+  border-radius: 22px;
+  padding: 38px 40px;
+  box-shadow: 0 28px 80px #102b4d1d;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 5px;
+  background: linear-gradient(90deg, var(--brand-navy), var(--brand-teal));
+}
+
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 32px;
+}
+
+.brand-logo-login { width: 220px; height: auto; }
+.login-brand small { margin-top: 10px; color: #6f8297; font-size: 9px; letter-spacing: 1.3px; text-transform: uppercase; font-weight: 750; }
+.login-card h1 { font-size: 26px; letter-spacing: -.7px; color: var(--brand-navy-deep); margin: 0 0 8px; }
+.login-hint { color: #6d7d90; font-size: 11px; line-height: 1.55; margin: 0 0 24px; }
+.login-card form label { display: block; color: #4c6178; font-size: 9px; font-weight: 750; margin: 15px 0; }
+.login-card form input { display: block; width: 100%; margin-top: 7px; border: 1px solid #d7e1ea; background: #f9fbfc; border-radius: 10px; padding: 12px 13px; font-size: 11px; outline: 0; color: var(--ink); }
+.login-card form input:focus { background: #fff; border-color: #6f97be; box-shadow: 0 0 0 4px #193b6810; }
+.login-card form .primary-button { width: 100%; margin-top: 9px; padding: 13px; }
+.login-foot,
+.login-notice,
+.login-error { font-size: 9px; line-height: 1.5; }
+
+@media (max-width: 720px) {
+  .brand-logo-sidebar { width: 150px; }
+  .brand-product { display: none !important; }
+  .brand { border: 0; margin: 0; padding: 0; }
+  .login-card { padding: 32px 25px; }
+  .brand-logo-login { width: 195px; }
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 type Mode = "login" | "bootstrap";
@@ -80,11 +81,15 @@ export default function LoginPage() {
     <main className="login-shell">
       <section className="login-card">
         <div className="login-brand">
-          <span className="brand-mark">Q</span>
-          <div>
-            <strong>Quimicativa</strong>
-            <small>Gestão integrada</small>
-          </div>
+          <Image
+            className="brand-logo brand-logo-login"
+            src="/brand/quimicativa-logo.png"
+            alt="Quimicativa Distribuidora"
+            width={223}
+            height={64}
+            priority
+          />
+          <small>Plataforma de gestão integrada</small>
         </div>
 
         <h1>{mode === "bootstrap" ? "Primeiro acesso" : "Entrar no painel"}</h1>
