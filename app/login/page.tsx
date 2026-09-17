@@ -14,11 +14,11 @@ export default function LoginPage() {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    fetch("/api/auth/signup")
+    fetch("/api/auth/signup", { cache: "no-store" })
       .then((r) => r.json())
       .then((raw) => {
         const d = raw as { bootstrap?: boolean };
-        if (d?.bootstrap) setMode("bootstrap");
+        setMode(d?.bootstrap ? "bootstrap" : "login");
       })
       .catch(() => {});
   }, []);
@@ -42,6 +42,15 @@ export default function LoginPage() {
         message?: string;
       };
       if (!r.ok) {
+        if (
+          mode === "bootstrap" &&
+          r.status === 403 &&
+          data?.error?.includes("cadastro é fechado")
+        ) {
+          setMode("login");
+          setNotice("O acesso administrativo já existe. Entre com o e-mail e a senha definidos.");
+          return;
+        }
         setError(data?.error || "Não foi possível concluir. Tente novamente.");
         return;
       }

@@ -279,10 +279,23 @@ export default function Dashboard() {
   const [attentionTotal, setAttentionTotal] = useState<number | null>(null);
   useEffect(() => {
     let mounted = true;
-    fetch("/api/profile")
-      .then((r) => r.json())
+    fetch("/api/profile", { cache: "no-store" })
+      .then(async (r) => {
+        if (r.status === 401) {
+          window.location.assign("/login");
+          return null;
+        }
+        if (!r.ok) throw new Error("profile");
+        return r.json();
+      })
       .then((data) => {
-        if (mounted && data.name) setProfile(data);
+        if (mounted && data?.name) setProfile(data);
+      })
+      .catch(() => {
+        if (mounted) {
+          setToast("Não foi possível validar o perfil. Recarregue a página.");
+          setTimeout(() => setToast(""), 4000);
+        }
       });
     return () => {
       mounted = false;
