@@ -183,6 +183,7 @@ export default function PedidosCenter({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<ProductLight[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncMessage, setSyncMessage] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -233,11 +234,20 @@ export default function PedidosCenter({
     };
     const syncAndRefresh = async () => {
       if (!canWrite) return;
+      let refreshedAt=0;
       try {
-        await syncErp();
+        const result=await syncErp(message=>{
+          if(disposed) return;
+          setSyncMessage(message);
+          if(Date.now()-refreshedAt>10000) {
+            refreshedAt=Date.now();
+            void Promise.all([loadOrders(),loadCustomers(),loadProducts()]);
+          }
+        });
+        if(!disposed) setSyncMessage(result.message);
         if (!disposed) await Promise.all([loadOrders(), loadCustomers()]);
-      } catch {
-        // A slow/unavailable ERP must not prevent the local order list from rendering.
+      } catch (error) {
+        if(!disposed) setSyncMessage(error instanceof Error?error.message:'Não foi possível sincronizar o ERP. Os dados já importados foram preservados.');
       }
     };
 
@@ -289,6 +299,7 @@ export default function PedidosCenter({
           </p>
         </div>
       </section>
+      {syncMessage && <p role="status" aria-live="polite">{syncMessage}</p>}
       <section className="ord-kpis">
         <article>
           <span>Pedidos abertos</span>
