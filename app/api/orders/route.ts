@@ -344,21 +344,24 @@ type ItemInput = {
   notes?: string;
 };
 
-async function validateItems(db: ReturnType<typeof getD1>, items: ItemInput[]) {
+async function validateItems(db: ReturnType<typeof getD1>, items: ItemInput[], orderId?: number) {
   if (!Array.isArray(items) || !items.length)
     return { error: "Adicione ao menos um produto ao pedido." };
-  const ids = [...new Set(items.map((i) => Number(i.productId)))];
+  const standalone = orderId ? await db.prepare('SELECT id FROM order_items WHERE order_id=? AND product_id IS NULL AND source_key IS NOT NULL').bind(orderId).all<{id:number}>() : {results:[]};
+  const standaloneIds = new Set(standalone.results.map(i=>i.id));
+  const isStandalone = (item:ItemInput) => !item.productId && standaloneIds.has(Number(item.id));
+  const ids = [...new Set(items.filter(i=>!isStandalone(i)).map((i) => Number(i.productId)))];
   if (ids.some((v) => !Number.isInteger(v) || v <= 0))
     return { error: "Produto inválido em um dos itens." };
-  const rows = await db
+  const rows = ids.length ? await db
     .prepare(
       `SELECT id,name FROM products WHERE id IN (${ids.map(() => "?").join(",")}) AND status='active'`,
     )
     .bind(...ids)
-    .all<{ id: number; name: string }>();
+    .all<{ id: number; name: string }>() : {results:[]};
   const byId = new Map(rows.results.map((r) => [r.id, r.name]));
   for (const item of items) {
-    if (!byId.has(Number(item.productId)))
+    if (!isStandalone(item) && !byId.has(Number(item.productId)))
       return {
         error: `Produto ${item.productId} não encontrado ou inativo. Cadastre-o em Produtos antes de incluí-lo no pedido.`,
       };
@@ -368,7 +371,7 @@ async function validateItems(db: ReturnType<typeof getD1>, items: ItemInput[]) {
     if (quantity > 1000000)
       return { error: "Quantidade acima do limite permitido." };
     const price = Number(item.unitPriceCents);
-    if (!Number.isFinite(price) || price < 0 || Math.round(price) !== price)
+    if (!Number.isFinite(price) || price < 0)
       return { error: "Preço unitário inválido em um dos itens." };
     for (const value of [item.packageCount, item.packageUnitWeightKg, item.weightKg, item.volumeM3]) {
       if (value !== undefined && (!Number.isFinite(Number(value)) || Number(value) < 0))
@@ -537,7 +540,7 @@ export async function PUT(request: NextRequest) {
   // Itens (quando enviados): id preservado = atualiza; sem id = insere; ausente da lista = remove (se sem documentos)
   let removedWithDocs: string[] = [];
   if (body.items !== undefined) {
-    const itemCheck = await validateItems(db, body.items as ItemInput[]);
+    const itemCheck = await validateItems(db, body.items as ItemInput[], id);
     if (itemCheck.error)
       return NextResponse.json({ error: itemCheck.error }, { status: 400 });
     const existing = await db
@@ -587,10 +590,12 @@ export async function PUT(request: NextRequest) {
         statements.push(
           db
             .prepare(
-              `UPDATE order_items SET product_id=?,product_name=?,quantity=?,unit=?,unit_price_cents=?,package_count=?,package_type=?,package_unit_weight_kg=?,weight_kg=?,volume_m3=?,lot_number=?,notes=?,updated_at=? WHERE id=? AND order_id=?`,
+              `UPDATE order_items SET line_total_cents=CASE WHEN quantity=? AND unit_price_cents=? THEN line_total_cents ELSE NULL END,product_id=?,product_name=?,quantity=?,unit=?,unit_price_cents=?,package_count=?,package_type=?,package_unit_weight_kg=?,weight_kg=?,volume_m3=?,lot_number=?,notes=?,updated_at=? WHERE id=? AND order_id=?`,
             )
             .bind(
-              Number(item.productId),
+              Number(item.quantity),
+              Number(item.unitPriceCents ?? 0),
+              item.productId ? Number(item.productId) : null,
               product?.name ?? byId.get(itemId)?.product_name ?? "Produto",
               Number(item.quantity),
               String(item.unit || "L"),

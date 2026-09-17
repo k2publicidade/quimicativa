@@ -114,9 +114,9 @@ const centsFromBRL = (text: string) => {
     .replace(/\./g, "")
     .replace(",", ".");
   const value = Number(cleaned);
-  return Number.isFinite(value) ? Math.round(value * 100) : 0;
+  return Number.isFinite(value) ? Math.round(value * 100000000) / 1000000 : 0;
 };
-const BRLFromCents = (cents: number) => (cents / 100).toFixed(2);
+const BRLFromCents = (cents: number) => (cents / 100).toLocaleString('en-US',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:6});
 const fmtBytes = (bytes: number) =>
   bytes > 1024 * 1024
     ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
