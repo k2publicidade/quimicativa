@@ -103,31 +103,24 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
     }
   };
 
-  const syncPayables = async () => {
-    setSaving(true);
-    try {
-      const response = await fetch('/api/financeiro/contas-a-pagar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync' }) });
-      const data = await response.json() as { error?: string; message?: string };
-      if (!response.ok) throw new Error(data.error || 'Falha ao sincronizar contas a pagar');
-      notify(data.message || 'Contas a pagar sincronizadas');
-    } catch (error) { notify(error instanceof Error ? error.message : 'Falha ao sincronizar contas a pagar'); }
-    finally { setSaving(false); }
-  };
-  const syncFiscal = async (scope: "entradas" | "notas-fiscais", label: string) => {
+  const syncFiscal = async (scope: "entradas" | "notas-fiscais" | "contas-pagar", label: string) => {
     setSaving(true);
     try {
       let offset = 0, imported = 0;
       for (;;) {
         const response = await fetch(`/api/integrations/sync?scope=${scope}&offset=${offset}`, { method: "POST" });
-        const data = await response.json() as { error?: string; message?: string; imported?: number; nextOffset?: number | null };
+        const data = await response.json() as { error?: string; issues?: string[]; message?: string; imported?: number; nextOffset?: number | null };
         if (!response.ok) throw new Error(data.error || `Falha ao sincronizar ${label}`);
+        if(data.issues?.length) throw new Error(`${data.issues.length} falha(s): ${data.issues.slice(0,2).join(' ')}`);
         imported += data.imported ?? 0;
+        setConfig(current=>({...current,lastSyncStatus:'running',lastSyncMessage:`${imported} ${label} sincronizadas`}));
         if (data.nextOffset === null || data.nextOffset === undefined) break;
         if (data.nextOffset <= offset) throw new Error("A paginação da vhsys não avançou");
         offset = data.nextOffset;
       }
       notify(`${imported} ${label} sincronizada(s)`);
-    } catch (error) { notify(error instanceof Error ? error.message : `Falha ao sincronizar ${label}`); }
+      setConfig(current=>({...current,lastSyncStatus:'success',lastSyncAt:Math.floor(Date.now()/1000),lastSyncMessage:`${imported} ${label} sincronizadas`}));
+    } catch (error) { const message=error instanceof Error ? error.message : `Falha ao sincronizar ${label}`; notify(message); setConfig(current=>({...current,lastSyncStatus:'error',lastSyncMessage:message})); }
     finally { setSaving(false); }
   };
 
@@ -159,7 +152,7 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
         <button className="secondary-button" type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar configuração"}</button>
         <button className="secondary-button" type="button" onClick={testPayload} disabled={saving || previewing || !config.active}>{previewing ? "Validando..." : "Testar e visualizar"}</button>
         <button className="primary-button" type="button" onClick={sync} disabled={saving || !config.active}>Sincronizar pedidos</button>
-        <button className="primary-button" type="button" onClick={syncPayables} disabled={saving || !config.active}>Sincronizar contas a pagar</button>
+        <button className="primary-button" type="button" onClick={() => syncFiscal("contas-pagar", "contas a pagar")} disabled={saving || !config.active}>Sincronizar contas a pagar</button>
         <button className="secondary-button" type="button" onClick={() => syncFiscal("entradas", "entradas de mercadoria")} disabled={saving || !config.active}>Sincronizar entradas</button>
         <button className="secondary-button" type="button" onClick={() => syncFiscal("notas-fiscais", "notas fiscais")} disabled={saving || !config.active}>Sincronizar notas fiscais</button>
       </div>

@@ -1,28 +1,31 @@
 import { decimal, object, rows, text, type ErpRow } from './vhsys';
+import {createVhsysClient} from './vhsys-sync';
 
 export type VhsysConfig = { base_url: string; api_token: string | null; secret_api_token: string | null };
 
 export function createVhsysFinanceClient(config: VhsysConfig) {
   if (!config.api_token || !config.secret_api_token) throw new Error('Configure os dois tokens da vhsys.');
   const base = new URL(config.base_url);
-  if (base.protocol !== 'https:' || base.hostname !== 'api.vhsys.com') throw new Error('Use https://api.vhsys.com/v2 como endpoint da vhsys.');
+  if (base.protocol !== 'https:' || base.hostname !== 'api.vhsys.com' || base.username || base.password || base.search || base.hash || base.pathname.replace(/\/+$/,'')!=='/v2') throw new Error('Use https://api.vhsys.com/v2 como endpoint da vhsys.');
   return async (path: string, init: RequestInit = {}) => {
+    if(!init.method || init.method==='GET') return createVhsysClient({...config,id:0})(path,/\/(produtos|parcelas)$/.test(path)?/^Nenhum(?:a)? (?:produto|parcela).*encontrad[oa][!.]?$/i:undefined);
     const response = await fetch(`${config.base_url.replace(/\/+$/, '')}${path}`, {
       ...init, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(15000),
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'access-token': config.api_token!, 'secret-access-token': config.secret_api_token!, 'User-Agent': 'Quimicativa/1.0', ...(init.headers || {}) },
     });
     const payload = object(await response.json());
-    if (!response.ok || payload.status === 'error' || (payload.code && Number(payload.code) !== 200)) throw new Error(`vhsys respondeu HTTP ${response.status}.`);
+    if (response.status === 403 && /\/(produtos|parcelas)$/.test(path) && typeof payload.data === 'string' && /^Nenhum(?:a)? (?:produto|parcela).*encontrad[oa][!.]?$/i.test(payload.data)) return {code:200,data:[]};
+    if (!response.ok || payload.status === 'error' || (payload.code && Number(payload.code) !== 200)) throw new Error(`vhsys: ${path.split('?')[0]} respondeu HTTP ${response.status}.`);
     return payload;
   };
 }
 
 export const payableId = (row: ErpRow) => text(row, 'id_conta_pag');
 export function payableStatus(row: ErpRow): 'completed' | 'overdue' | 'pending' | 'review' {
-  const liquidated = text(row, 'liquidado_pag').toLowerCase() === 'sim' || text(row, 'situacao').toLowerCase().includes('liquid');
+  const liquidated = text(row, 'liquidado_pag').toLowerCase() === 'sim';
   if (liquidated) return 'completed';
   const due = Date.parse(text(row, 'vencimento_pag'));
-  if (Number.isFinite(due) && due < Date.now()) return 'overdue';
+  if (Number.isFinite(due) && text(row, 'vencimento_pag') < new Intl.DateTimeFormat('en-CA', {timeZone:'America/Sao_Paulo'}).format(new Date())) return 'overdue';
   return 'pending';
 }
 export function payableRecord(row: ErpRow, integrationId: number) {

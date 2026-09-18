@@ -19,7 +19,7 @@ export async function PUT(request: NextRequest) {
     const actor = await getActor();
     if (!actor) return NextResponse.json({ error: "Acesso não autorizado" }, { status: 401 });
     if (!canWrite(actor)) return NextResponse.json({ error: "Seu perfil possui acesso somente para consulta" }, { status: 403 });
-    const body = await request.json() as Record<string, unknown>, db = getD1();
+    const body = await request.json() as Record<string, unknown>;
     const { baseUrl, ordersPath } = externalErpUrl(String(body.baseUrl || "").trim(), String(body.ordersPath || "/orders").trim());
     const { ordersPath: customersPath } = externalErpUrl(baseUrl, String(body.customersPath || "/clientes").trim());
     const { ordersPath: goodsReceiptsPath } = externalErpUrl(baseUrl, String(body.goodsReceiptsPath || "/entradas").trim());
@@ -27,8 +27,8 @@ export async function PUT(request: NextRequest) {
     const { ordersPath: receivablesPath } = externalErpUrl(baseUrl, String(body.receivablesPath || "/contas-a-receber").trim());
     const now = timestamp(), supabase = supabaseAdmin(), { data: current, error: currentError } = await supabase.from("erp_integrations").select("id,api_token,secret_api_token").order("id", { ascending: false }).limit(1).maybeSingle();
     if (currentError) throw new Error(currentError.message);
-    const token = body.apiToken === undefined ? current?.api_token ?? null : String(body.apiToken || "").trim() || null;
-    const secret = body.secretApiToken === undefined ? current?.secret_api_token ?? null : String(body.secretApiToken || "").trim() || null;
+    const token = String(body.apiToken || "").trim() || current?.api_token || null;
+    const secret = String(body.secretApiToken || "").trim() || current?.secret_api_token || null;
     const values = { provider: String(body.provider || "REST"), base_url: baseUrl, orders_path: ordersPath, customers_path: customersPath, goods_receipts_path: goodsReceiptsPath, invoices_path: invoicesPath, receivables_path: receivablesPath, api_token: token, secret_api_token: secret, active: body.active ? 1 : 0, updated_at: now };
     const result = current ? await supabase.from("erp_integrations").update(values).eq("id", current.id).select("*").single() : await supabase.from("erp_integrations").insert({ ...values, created_by: actor.userId, created_at: now }).select("*").single();
     if (result.error) throw new Error(result.error.message);

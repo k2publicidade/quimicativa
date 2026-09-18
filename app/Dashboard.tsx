@@ -38,6 +38,7 @@ type RecordItem = {
   dueDate: string;
   amountCents: number;
   metadata: Record<string, string>;
+  erpSnapshot?: Record<string, unknown>;
   updatedAt: number;
 };
 type DrawerState = { mode: "view" | "edit" | "new"; record: RecordItem | null };
@@ -1207,15 +1208,15 @@ function ModuleWorkspace({
       </div>
       <section className="module-kpis">
         <article>
-          <span>{config.kpis[0]}</span>
+          <span>{["Contas a Pagar", "Notas Fiscais de Entrada", "Notas Fiscais de Saída"].includes(module.name) ? "Total de registros" : config.kpis[0]}</span>
           <strong>{records.length}</strong>
         </article>
         <article>
-          <span>{config.kpis[1]}</span>
+          <span>{["Contas a Pagar", "Notas Fiscais de Entrada", "Notas Fiscais de Saída"].includes(module.name) ? "Pendentes ou em atenção" : config.kpis[1]}</span>
           <strong>{attention}</strong>
         </article>
         <article>
-          <span>{config.kpis[2]}</span>
+          <span>{["Contas a Pagar", "Notas Fiscais de Entrada", "Notas Fiscais de Saída"].includes(module.name) ? "Concluídos ou aprovados" : config.kpis[2]}</span>
           <strong>{done}</strong>
         </article>
       </section>
@@ -1282,7 +1283,7 @@ function ModuleWorkspace({
                         <button onClick={() => onView(record)}>
                           Consultar
                         </button>
-                        <button className="edit" onClick={() => onEdit(record)}>
+                        <button className="edit" disabled={Boolean(record.erpSnapshot)} title={record.erpSnapshot ? "Altere os dados na vhsys e sincronize novamente" : undefined} onClick={() => onEdit(record)}>
                           Editar
                         </button>
                       </div>
@@ -1431,6 +1432,7 @@ function RecordDrawer({
                 </dd>
               </div>
             </dl>
+            {record?.erpSnapshot && <details><summary>Dados completos importados da vhsys</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:480,overflow:'auto'}}>{JSON.stringify(record.erpSnapshot,null,2)}</pre></details>}
             {record && (
               <RecordDocuments
                 recordId={record.id}
@@ -1448,7 +1450,8 @@ function RecordDrawer({
                   Anonimizar (LGPD)
                 </button>
               )}
-              <button className="primary-button" onClick={onEdit}>
+              {record?.erpSnapshot && <p>Dados da vhsys: faça alterações na origem e sincronize novamente.</p>}
+              <button className="primary-button" disabled={Boolean(record?.erpSnapshot)} onClick={onEdit}>
                 Editar {config.singular}
               </button>
             </footer>

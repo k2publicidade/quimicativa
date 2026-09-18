@@ -879,7 +879,7 @@ export const moduleConfigs: Record<string, ModuleConfig> = {
     descriptionLabel: "Centro de custo, justificativa e observações",
     statuses: [
       { value: "review", label: "Aguardando aprovação" },
-      { value: "pending", label: "Agendada" },
+      { value: "pending", label: "Em aberto" },
       { value: "completed", label: "Paga" },
       { value: "overdue", label: "Em atraso" },
     ],

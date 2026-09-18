@@ -4,6 +4,7 @@ import { getModuleConfig } from "../../module-config";
 import { canWrite, getActor } from "../authz";
 
 type RecordRow = {
+  source_payload?: unknown;
   id: number;
   department: string;
   module: string;
@@ -22,6 +23,7 @@ type RecordRow = {
 function serialize(row: RecordRow) {
   return {
     id: row.id,
+    erpSnapshot: typeof row.source_payload === 'string' ? safeMetadata(row.source_payload) : row.source_payload,
     department: row.department,
     module: row.module,
     title: row.title,
@@ -216,7 +218,7 @@ export async function PUT(request: NextRequest) {
     db = getD1();
   const updated = await db
     .prepare(
-      "UPDATE records SET title=?,description=?,metadata=?,status=?,priority=?,due_date=?,amount_cents=?,updated_at=? WHERE id=? AND department=? AND module=? RETURNING *",
+      "UPDATE records SET title=?,description=?,metadata=?,status=?,priority=?,due_date=?,amount_cents=?,updated_at=? WHERE id=? AND department=? AND module=? AND source_key IS NULL RETURNING *",
     )
     .bind(
       title,

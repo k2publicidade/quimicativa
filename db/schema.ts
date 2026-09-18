@@ -218,7 +218,7 @@ export const orderItems = sqliteTable("order_items", {
   lineTotalCents: integer('line_total_cents'),
   id: integer("id").primaryKey({ autoIncrement: true }),
   orderId: integer("order_id").notNull().references(() => orders.id),
-  productId: integer("product_id").notNull().references(() => products.id),
+  productId: integer("product_id").references(() => products.id),
   productName: text("product_name").notNull(),
   quantity: real("quantity").notNull().default(0),
   unit: text("unit").notNull().default("L"),

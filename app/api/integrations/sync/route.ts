@@ -6,7 +6,7 @@ import { canWrite, getActor } from "../../authz";
 import { externalErpUrl } from "../url-safety";
 import { supabaseAdmin } from '../../../../lib/supabase/admin';
 import { syncVhsysBatch } from '../../../../lib/vhsys-sync';
-import { fiscalRecord, getFiscalDetails, listVhsysCollection } from '../../../../lib/vhsys-fiscal';
+import { syncVhsysRecords } from '../../../../lib/vhsys-record-sync';
 export const maxDuration = 300;
 
 type Config = { id: number; provider: string; base_url: string; orders_path: string; customers_path: string; api_token: string | null; secret_api_token: string | null };
@@ -34,23 +34,7 @@ export async function POST(request: NextRequest) {
   try {
     if (config.provider.toLowerCase() === 'vhsys' || new URL(config.base_url).hostname === 'api.vhsys.com') {
       const scope = request.nextUrl.searchParams.get('scope');
-      if (scope === 'entradas' || scope === 'notas-fiscais') {
-        const kind = scope === 'entradas' ? 'entrada' : 'nota';
-        const collectionPath = kind === 'entrada' ? '/entradas-mercadoria' : '/notas-fiscais';
-        const remoteId = request.nextUrl.searchParams.get('remoteId');
-        const rowsRemote = remoteId ? [(await getFiscalDetails(config, kind, remoteId)).header] : await listVhsysCollection(config, collectionPath, { offset: Number(request.nextUrl.searchParams.get('offset') || 0), lixeira: 'Nao' });
-        const imported: string[] = [], issues: string[] = [], timestamp = now();
-        for (const summary of rowsRemote) try {
-          const id = String(summary[kind === 'entrada' ? 'id_entrada' : 'id_venda'] ?? '');
-          const details = remoteId ? await getFiscalDetails(config, kind, id) : { products: [], parcels: [] };
-          const record = fiscalRecord(summary, config.id, kind, [...details.products, ...details.parcels]);
-          await db.prepare(`INSERT INTO records (source_key,source_payload,department,module,title,description,metadata,status,priority,owner_id,due_date,amount_cents,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_key) DO UPDATE SET source_payload=excluded.source_payload,title=excluded.title,description=excluded.description,metadata=excluded.metadata,status=excluded.status,due_date=excluded.due_date,amount_cents=excluded.amount_cents,updated_at=excluded.updated_at`).bind(record.sourceKey, record.sourcePayload, 'compras', kind === 'entrada' ? 'Notas Fiscais de Entrada' : 'Notas Fiscais de Saída', record.title, record.description, JSON.stringify(record.metadata), record.status, 'medium', actor.userId, record.dueDate, record.amountCents, timestamp, timestamp).run();
-          imported.push(id);
-        } catch (error) { issues.push(error instanceof Error ? error.message : 'Registro fiscal inválido.'); }
-        const message = `${imported.length} ${kind === 'entrada' ? 'entrada(s) de mercadoria' : 'nota(s) fiscal(is)'} sincronizada(s)${issues.length ? ` · ${issues.length} falha(s)` : ''}`;
-        await db.prepare("UPDATE erp_integrations SET last_sync_at=?,last_sync_status=?,last_sync_message=?,updated_at=? WHERE id=?").bind(timestamp, issues.length ? 'error' : 'success', message, timestamp, config.id).run();
-        return NextResponse.json({ imported: imported.length, issues, message, nextOffset: rowsRemote.length === 250 && !remoteId ? Number(request.nextUrl.searchParams.get('offset') || 0) + 250 : null });
-      }
+      if (scope && ['entradas','notas-fiscais','contas-pagar'].includes(scope)) return NextResponse.json(await syncVhsysRecords(supabaseAdmin(),config,scope,Number(request.nextUrl.searchParams.get('offset')||0),request.nextUrl.searchParams.get('remoteId')||undefined,request.nextUrl.searchParams.get('preview')==='1'));
       const offset = Number(request.nextUrl.searchParams.get('offset') || 0);
       const remoteId = request.nextUrl.searchParams.get('remoteId') || undefined;
       if (!Number.isSafeInteger(offset) || offset < 0 || (remoteId && !/^\d+$/.test(remoteId))) return NextResponse.json({error:'Identificador de sincronização inválido'},{status:400});
