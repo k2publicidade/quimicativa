@@ -285,7 +285,9 @@ export default function Dashboard() {
     [drawer, setDrawer] = useState<DrawerState | null>(null),
     [toast, setToast] = useState(""),
     [routeDraftOrderId, setRouteDraftOrderId] = useState<number | null>(null),
-    [orderEditId, setOrderEditId] = useState<number | null>(null);
+    [orderEditId, setOrderEditId] = useState<number | null>(null),
+    [mobileMenuOpen, setMobileMenuOpen] = useState(false),
+    [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [profile, setProfile] = useState({ name: "Usuário", role: "viewer" });
   const [fleetInitialTab, setFleetInitialTab] = useState<"vehicles" | "drivers" | "maintenance">("vehicles");
   const [attentionTotal, setAttentionTotal] = useState<number | null>(null);
@@ -410,6 +412,11 @@ export default function Dashboard() {
     setActive(key);
     setSelectedModule(null);
     setQuery("");
+    setMobileMenuOpen(false);
+    setMobileSearchOpen(false);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
   return (
     <div className="app-shell">
@@ -447,6 +454,64 @@ export default function Dashboard() {
         </div>
       </aside>
       <main className="main">
+        <header className="mobile-header">
+          <div
+            className="mobile-header-brand"
+            role="button"
+            tabIndex={0}
+            onClick={() => switchArea("dashboard")}
+            onKeyDown={(e) => e.key === "Enter" && switchArea("dashboard")}
+          >
+            <Image
+              src="/brand/quimicativa-logo.png"
+              alt="Quimicativa"
+              width={110}
+              height={32}
+              priority
+              style={{ objectFit: "contain", height: 26, width: "auto" }}
+            />
+            <span className="mobile-active-pill" style={{ borderColor: current.color }}>
+              <span className="mobile-active-dot" style={{ backgroundColor: current.color }} />
+              {current.name}
+            </span>
+          </div>
+          <div className="mobile-header-actions">
+            <button
+              type="button"
+              className="mobile-header-btn"
+              aria-label="Buscar no sistema"
+              onClick={() => setMobileSearchOpen(true)}
+            >
+              <span>⌕</span>
+            </button>
+            <button
+              type="button"
+              className="mobile-header-btn"
+              aria-label="Pendências"
+              onClick={() => {
+                switchArea("dashboard");
+                notify(
+                  attentionTotal
+                    ? `${attentionTotal} pendência(s) precisam da sua atenção hoje`
+                    : "Nenhuma pendência no momento",
+                );
+              }}
+            >
+              <span className="bell">
+                ◌
+                {attentionTotal ? <b>{attentionTotal}</b> : null}
+              </span>
+            </button>
+            <div className="mobile-avatar" title={profile.name}>
+              {profile.name
+                .split(" ")
+                .map((name) => name[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase()}
+            </div>
+          </div>
+        </header>
         <header className="topbar">
           <div className="search">
             <span>⌕</span>
@@ -575,7 +640,153 @@ export default function Dashboard() {
             />
           )}
         </div>
+        {mobileSearchOpen && (
+          <div
+            className="mobile-search-backdrop"
+            onClick={() => setMobileSearchOpen(false)}
+          >
+            <div
+              className="mobile-search-sheet"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mobile-search-input-box">
+                <span className="search-icon">⌕</span>
+                <input
+                  autoFocus
+                  aria-label="Buscar no sistema"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={
+                    selectedModule
+                      ? "Buscar nos registros..."
+                      : "Buscar clientes, notas, pedidos..."
+                  }
+                />
+                {query && (
+                  <button
+                    type="button"
+                    className="clear-btn"
+                    onClick={() => setQuery("")}
+                    aria-label="Limpar pesquisa"
+                  >
+                    ×
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="done-btn"
+                  onClick={() => setMobileSearchOpen(false)}
+                >
+                  Concluir
+                </button>
+              </div>
+              {query && (
+                <p className="mobile-search-status">
+                  Filtrando conteúdo na tela ativa...
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </main>
+
+      <nav className="mobile-bottom-bar" aria-label="Menu inferior de navegação">
+        <button
+          type="button"
+          className={`mobile-tab-item ${active === "dashboard" && !mobileMenuOpen ? "active" : ""}`}
+          onClick={() => switchArea("dashboard")}
+        >
+          <span className="tab-icon">📊</span>
+          <span className="tab-label">Início</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-tab-item ${active === "pedidos" && !mobileMenuOpen ? "active" : ""}`}
+          onClick={() => switchArea("pedidos")}
+        >
+          <span className="tab-icon">📦</span>
+          <span className="tab-label">Pedidos</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-tab-item ${active === "frota" && !mobileMenuOpen ? "active" : ""}`}
+          onClick={() => switchArea("frota")}
+        >
+          <span className="tab-icon">🚚</span>
+          <span className="tab-label">Frota</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-tab-item ${active === "digitalizacao" && !mobileMenuOpen ? "active" : ""}`}
+          onClick={() => switchArea("digitalizacao")}
+        >
+          <span className="tab-icon">📑</span>
+          <span className="tab-label">Acervo</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-tab-item ${mobileMenuOpen ? "active" : ""}`}
+          onClick={() => setMobileMenuOpen((prev) => !prev)}
+        >
+          <span className="tab-icon">☰</span>
+          <span className="tab-label">Menu</span>
+        </button>
+      </nav>
+
+      {mobileMenuOpen && (
+        <div
+          className="mobile-sheet-overlay"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          <div
+            className="mobile-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sheet-handle-bar">
+              <span className="sheet-handle" />
+            </div>
+            <header className="sheet-header">
+              <div>
+                <span className="sheet-eyebrow">NAVEGAÇÃO COMPLETA</span>
+                <h3>Departamentos do Sistema</h3>
+              </div>
+              <button
+                type="button"
+                className="sheet-close-btn"
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label="Fechar menu"
+              >
+                ✕
+              </button>
+            </header>
+            <div className="sheet-grid">
+              {Object.entries(departments).map(([key, item]) => {
+                const isCur = active === key;
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    className={`sheet-dept-card ${isCur ? "active" : ""}`}
+                    onClick={() => switchArea(key)}
+                  >
+                    <div
+                      className="sheet-dept-badge"
+                      style={{ backgroundColor: item.color }}
+                    >
+                      {item.code}
+                    </div>
+                    <div className="sheet-dept-info">
+                      <strong>{item.name}</strong>
+                      <small>{item.eyebrow}</small>
+                    </div>
+                    {isCur && <span className="sheet-dept-check">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {drawer && selectedModule && (
         <RecordDrawer
           state={drawer}

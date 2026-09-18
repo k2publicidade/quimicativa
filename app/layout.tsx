@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 import "./globals.css";
 import "./brand.css";
@@ -17,10 +17,24 @@ import "./fleet.css";
 
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: "#16253d",
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://quimicativa.vercel.app"),
   title: "Quimicativa | Gestão Integrada",
   description: "Central executiva para gestão de pessoas, operações, vendas e finanças da Quimicativa.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Quimicativa",
+  },
   openGraph: {
     title: "Quimicativa | Gestão Integrada",
     description: "Gestão integrada, decisões mais inteligentes.",
