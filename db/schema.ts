@@ -9,6 +9,8 @@ export const users = sqliteTable("users", {
 });
 
 export const records = sqliteTable("records", {
+  sourceKey: text("source_key").unique(),
+  sourcePayload: text("source_payload"),
   id: integer("id").primaryKey({ autoIncrement: true }),
   department: text("department").notNull(),
   module: text("module").notNull(),

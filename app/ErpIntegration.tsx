@@ -103,6 +103,34 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
     }
   };
 
+  const syncPayables = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch('/api/financeiro/contas-a-pagar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'sync' }) });
+      const data = await response.json() as { error?: string; message?: string };
+      if (!response.ok) throw new Error(data.error || 'Falha ao sincronizar contas a pagar');
+      notify(data.message || 'Contas a pagar sincronizadas');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Falha ao sincronizar contas a pagar'); }
+    finally { setSaving(false); }
+  };
+  const syncFiscal = async (scope: "entradas" | "notas-fiscais", label: string) => {
+    setSaving(true);
+    try {
+      let offset = 0, imported = 0;
+      for (;;) {
+        const response = await fetch(`/api/integrations/sync?scope=${scope}&offset=${offset}`, { method: "POST" });
+        const data = await response.json() as { error?: string; message?: string; imported?: number; nextOffset?: number | null };
+        if (!response.ok) throw new Error(data.error || `Falha ao sincronizar ${label}`);
+        imported += data.imported ?? 0;
+        if (data.nextOffset === null || data.nextOffset === undefined) break;
+        if (data.nextOffset <= offset) throw new Error("A paginação da vhsys não avançou");
+        offset = data.nextOffset;
+      }
+      notify(`${imported} ${label} sincronizada(s)`);
+    } catch (error) { notify(error instanceof Error ? error.message : `Falha ao sincronizar ${label}`); }
+    finally { setSaving(false); }
+  };
+
   return <section className="panel erp-panel">
     <div className="panel-heading">
       <div><h2>Integração com ERP</h2><p>Sincronize pedidos sem redigitar dados no CRM.</p></div>
@@ -131,6 +159,9 @@ export default function ErpIntegration({ canWrite, notify }: { canWrite: boolean
         <button className="secondary-button" type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar configuração"}</button>
         <button className="secondary-button" type="button" onClick={testPayload} disabled={saving || previewing || !config.active}>{previewing ? "Validando..." : "Testar e visualizar"}</button>
         <button className="primary-button" type="button" onClick={sync} disabled={saving || !config.active}>Sincronizar pedidos</button>
+        <button className="primary-button" type="button" onClick={syncPayables} disabled={saving || !config.active}>Sincronizar contas a pagar</button>
+        <button className="secondary-button" type="button" onClick={() => syncFiscal("entradas", "entradas de mercadoria")} disabled={saving || !config.active}>Sincronizar entradas</button>
+        <button className="secondary-button" type="button" onClick={() => syncFiscal("notas-fiscais", "notas fiscais")} disabled={saving || !config.active}>Sincronizar notas fiscais</button>
       </div>
     </form> : <p className="erp-readonly">Somente gestores podem alterar a integração.</p>}
     {preview && <div className="erp-preview"><strong>Prévia sem importação</strong><span>{preview.validRecords} de {preview.totalRecords} registros válidos</span>{preview.sample.length ? <div className="table-wrap"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Entrega</th><th>Pagamento</th><th>Itens válidos</th></tr></thead><tbody>{preview.sample.map((item, index) => <tr key={`${item.number}-${index}`}><td>{item.number || "Ausente"}</td><td>{item.customerName || "Ausente"}</td><td>{item.deliveryDate || "—"}</td><td>{item.paymentTerms || "—"}</td><td>{item.items}</td></tr>)}</tbody></table></div> : <small>Nenhum pedido reconhecido no retorno.</small>}</div>}

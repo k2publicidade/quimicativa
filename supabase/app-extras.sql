@@ -111,6 +111,9 @@ alter table erp_integrations add column if not exists customers_path text not nu
 alter table erp_integrations add column if not exists goods_receipts_path text not null default '/entradas';
 alter table erp_integrations add column if not exists invoices_path text not null default '/notas-fiscais';
 alter table erp_integrations add column if not exists receivables_path text not null default '/contas-a-receber';
+alter table records add column if not exists source_key text;
+alter table records add column if not exists source_payload jsonb;
+create unique index if not exists idx_records_source_key on records(source_key) where source_key is not null;
 
 -- ---------------------------------------------------------------------------
 do $$
