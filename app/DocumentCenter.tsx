@@ -188,6 +188,19 @@ export default function DocumentCenter({
     [suggestions, setSuggestions] = useState<Suggestion[]>([]),
     [preview, setPreview] = useState<DocumentItem | null>(null),
     [editing, setEditing] = useState<DocumentItem | null>(null);
+
+  useEffect(() => {
+    if (!preview && !editing) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPreview(null);
+        setEditing(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [preview, editing]);
+
   const load = async () => {
     setLoading(true);
     try {

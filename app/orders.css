@@ -179,22 +179,34 @@
 .ord-detail {
   display: grid;
   gap: 18px;
-  padding: 4px 2px 8px;
-  max-height: 74vh;
-  overflow: auto;
+  padding: 2px 0 8px;
+  max-height: none;
+  overflow: visible;
+  width: 100%;
+  box-sizing: border-box;
 }
 .ord-section {
   border: 1px solid var(--line, #e6ebf0);
   border-radius: 14px;
   padding: 16px;
   background: #fff;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
 }
 .ord-section > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.ord-section > header > div:last-child,
+.ord-section > header > button,
+.ord-section > header > strong {
+  flex-shrink: 0;
 }
 .ord-section > header h4 {
   font-size: 14px;
@@ -330,16 +342,28 @@
   background: #fbfcfd;
 }
 .ord-modal-card {
-  width: min(960px, 94vw);
-  max-height: 88vh;
+  width: min(980px, calc(100vw - 32px)) !important;
+  max-width: min(980px, calc(100vw - 32px)) !important;
+  max-height: min(90vh, 900px);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
 }
 .ord-modal-card .body {
-  overflow: auto;
-  padding: 6px 22px 22px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 24px 24px;
+  flex: 1;
+  min-height: 0;
+  scrollbar-gutter: stable;
+  width: 100%;
+  box-sizing: border-box;
 }
-.ord-modal-card.narrow { width: min(560px, 94vw); }
+.ord-modal-card.narrow {
+  width: min(580px, calc(100vw - 32px)) !important;
+  max-width: min(580px, calc(100vw - 32px)) !important;
+}
 
 .ord-toolbar {
   display: flex;
