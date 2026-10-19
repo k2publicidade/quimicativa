@@ -15,6 +15,7 @@
     "test:classifier": "node scripts/classifier-test.mjs",
     "test:schema": "node --experimental-sqlite scripts/schema-smoke-test.mjs",
     "test:operations": "node scripts/operations-test.mjs",
+    "test:auth-availability": "node scripts/auth-availability-test.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

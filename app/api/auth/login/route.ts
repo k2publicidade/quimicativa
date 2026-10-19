@@ -16,6 +16,16 @@ export async function POST(request: NextRequest) {
     email,
     password,
   });
+  if (error && (!error.status || error.status >= 500))
+    return NextResponse.json(
+      { error: "O serviço de acesso está temporariamente indisponível. Tente novamente em instantes." },
+      { status: 503 },
+    );
+  if (error?.status === 429)
+    return NextResponse.json(
+      { error: "Muitas tentativas de acesso. Aguarde alguns minutos e tente novamente." },
+      { status: 429 },
+    );
   if (error || !data.user)
     return NextResponse.json(
       { error: "E-mail ou senha inválidos." },

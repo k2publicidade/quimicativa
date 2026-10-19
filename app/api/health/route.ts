@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "../../../lib/supabase/admin";
 
 /**
  * Diagnostico rapido de configuracao. Nao expoe valores, apenas se existem.
@@ -11,9 +12,18 @@ export async function GET() {
 
   const url = env.NEXT_PUBLIC_SUPABASE_URL;
   const cryptoOk = typeof globalThis.crypto?.randomUUID === "function";
+  const configured = check("NEXT_PUBLIC_SUPABASE_URL") && check("NEXT_PUBLIC_SUPABASE_ANON_KEY") && check("SUPABASE_SECRET_KEY");
+  let databaseReachable = false;
+  if (configured) {
+    try {
+      const { error } = await supabaseAdmin().from("users").select("id").limit(1).abortSignal(AbortSignal.timeout(5000));
+      databaseReachable = !error;
+    } catch { /* Retorna estado indisponível sem expor detalhes do banco. */ }
+  }
 
   return NextResponse.json({
-    ok: check("NEXT_PUBLIC_SUPABASE_URL") && check("NEXT_PUBLIC_SUPABASE_ANON_KEY") && check("SUPABASE_SECRET_KEY"),
+    ok: configured && databaseReachable,
+    databaseReachable,
     env: {
       NEXT_PUBLIC_SUPABASE_URL: check("NEXT_PUBLIC_SUPABASE_URL"),
       NEXT_PUBLIC_SUPABASE_ANON_KEY: check("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
@@ -25,6 +35,6 @@ export async function GET() {
     supabaseHost: url ? new URL(url).host : null,
     runtime: "edge",
     randomUUID: cryptoOk,
-    hint: "Se algum item de env for false, cadastre em Vercel > Settings > Environment Variables e faca um novo deploy.",
-  });
+    hint: !configured ? "Confira as variáveis de ambiente de produção." : !databaseReachable ? "Não foi possível conectar ao banco. Confira o estado do projeto Supabase." : "Configuração e conexão com o banco disponíveis.",
+  }, { status: configured && databaseReachable ? 200 : 503, headers: { "Cache-Control": "no-store" } });
 }

@@ -27,11 +27,12 @@ export async function getActor(): Promise<Actor | null> {
     email;
 
   const db = supabaseAdmin();
-  const { data: existing } = await db
+  const { data: existing, error: lookupError } = await db
     .from("users")
     .select("role, name")
     .eq("id", user.id)
     .maybeSingle();
+  if (lookupError) return null;
 
   if (existing) {
     return {
@@ -42,18 +43,20 @@ export async function getActor(): Promise<Actor | null> {
     };
   }
 
-  const { count } = await db
+  const { count, error: countError } = await db
     .from("users")
     .select("id", { count: "exact", head: true });
+  if (countError || count === null) return null;
   const role: Actor["role"] = (count ?? 0) === 0 ? "ceo" : "viewer";
 
-  await db.from("users").insert({
+  const { error: insertError } = await db.from("users").insert({
     id: user.id,
     email,
     name: displayName,
     role,
     created_at: Math.floor(Date.now() / 1000),
   });
+  if (insertError) return null;
 
   return { userId: user.id, email, displayName, role };
 }

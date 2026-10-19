@@ -7,9 +7,13 @@ export const revalidate = 0;
 
 /** Indica se o sistema ainda precisa do primeiro acesso (bootstrap). */
 export async function GET() {
-  const { count } = await supabaseAdmin()
+  const { count, error } = await supabaseAdmin()
     .from("users")
     .select("id", { count: "exact", head: true });
+  if (error || count === null) return NextResponse.json(
+    { bootstrap: false, error: "O serviço de acesso está temporariamente indisponível. Tente novamente em instantes." },
+    { status: 503, headers: { "Cache-Control": "no-store, max-age=0" } },
+  );
   return NextResponse.json(
     { bootstrap: (count ?? 0) === 0 },
     { headers: { "Cache-Control": "no-store, max-age=0" } },
@@ -39,9 +43,13 @@ export async function POST(request: NextRequest) {
     );
 
   const admin = supabaseAdmin();
-  const { count } = await admin
+  const { count, error: countError } = await admin
     .from("users")
     .select("id", { count: "exact", head: true });
+  if (countError || count === null) return NextResponse.json(
+    { error: "O serviço de acesso está temporariamente indisponível. Tente novamente em instantes." },
+    { status: 503 },
+  );
   const bootstrap = (count ?? 0) === 0;
 
   if (!bootstrap) {
@@ -69,7 +77,7 @@ export async function POST(request: NextRequest) {
     );
 
   const role = bootstrap ? "ceo" : "viewer";
-  await admin
+  const { error: profileError } = await admin
     .from("users")
     .upsert(
       {
@@ -81,6 +89,10 @@ export async function POST(request: NextRequest) {
       },
       { onConflict: "id" },
     );
+  if (profileError) return NextResponse.json(
+    { error: "Não foi possível concluir o cadastro. Peça à direção para conferir o acesso." },
+    { status: 503 },
+  );
 
   return NextResponse.json(
     {

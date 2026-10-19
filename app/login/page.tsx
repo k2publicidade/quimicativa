@@ -16,12 +16,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     fetch("/api/auth/signup", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((raw) => {
-        const d = raw as { bootstrap?: boolean };
+      .then(async (r) => ({ ok: r.ok, data: await r.json() as { bootstrap?: boolean; error?: string } }))
+      .then(({ ok, data: d }) => {
+        if (!ok) { setError(d.error || "O serviço de acesso está temporariamente indisponível. Tente novamente em instantes."); return; }
         setMode(d?.bootstrap ? "bootstrap" : "login");
       })
-      .catch(() => {});
+      .catch(() => setError("Não foi possível verificar o serviço de acesso. Tente novamente em instantes."));
   }, []);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
