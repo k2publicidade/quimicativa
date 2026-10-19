@@ -1,4 +1,5 @@
 "use client";
+import MaintenanceSchedule from "./MaintenanceSchedule";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Vehicle = {
@@ -70,7 +71,7 @@ const docTypes = [
   "Inspeção veicular",
   "Outro",
 ];
-const maintTypes = ["Preventiva", "Corretiva", "Inspeção", "Pneus", "Outro"];
+const maintTypes = ["Óleo e filtros", "Limpeza geral", "Revisão geral", "Preventiva", "Corretiva", "Inspeção", "Pneus", "Outro"];
 const maintStatuses = [
   { value: "scheduled", label: "Agendada" },
   { value: "in_progress", label: "Em andamento" },
@@ -282,6 +283,7 @@ export default function FleetCenter({
           </button>
         ))}
       </div>
+      {tab === "maintenance" && <MaintenanceSchedule notify={notify} canWrite={canWrite} />}
       {loading ? (
         <div className="records-loading" aria-label="Carregando">
           <i />

@@ -14,6 +14,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "test:classifier": "node scripts/classifier-test.mjs",
     "test:schema": "node --experimental-sqlite scripts/schema-smoke-test.mjs",
+    "test:operations": "node scripts/operations-test.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
@@ -32,6 +33,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
+    "@electric-sql/pglite": "^0.5.10",
     "@openai/sites-vite-plugin": "^0.1.0 || ^0.2.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",

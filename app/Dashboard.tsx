@@ -12,6 +12,9 @@ import ErpIntegration from "./ErpIntegration";
 import ProfitabilityCenter from "./ProfitabilityCenter";
 import ManagementIndicators from "./ManagementIndicators";
 import ClientesCenter from "./ClientesCenter";
+import PeopleCenter from "./PeopleCenter";
+import WarehouseCenter from "./WarehouseCenter";
+import StaffJourney from "./StaffJourney";
 
 type Module = {
   name: string;
@@ -133,6 +136,12 @@ const departments: Record<string, Department> = {
         count: "12 candidatos",
       },
     ],
+  },
+  funcionarios: {
+    code: "EQ", name: "Funcionários em serviço", eyebrow: "JORNADA E RETORNO", summary: "Motorista, ajudantes, horários, quilometragem e relatório de cada pedido.", color: "#7657c8", modules: [],
+  },
+  galpao: {
+    code: "GP", name: "Galpão e estoque", eyebrow: "PREPARAÇÃO E EXPEDIÇÃO", summary: "Pedidos do dia, embalagens, bombas, mangotes e roteiro do dia seguinte.", color: "#b77720", modules: [],
   },
   logistica: {
     code: "LG",
@@ -286,6 +295,7 @@ export default function Dashboard() {
     [drawer, setDrawer] = useState<DrawerState | null>(null),
     [toast, setToast] = useState(""),
     [routeDraftOrderId, setRouteDraftOrderId] = useState<number | null>(null),
+    [routeDraftDate, setRouteDraftDate] = useState(""),
     [orderEditId, setOrderEditId] = useState<number | null>(null),
     [mobileMenuOpen, setMobileMenuOpen] = useState(false),
     [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -594,7 +604,7 @@ export default function Dashboard() {
                 {selectedModule ? selectedModule.description : current.summary}
               </p>
             </div>
-            {selectedModule && (
+            {selectedModule && !(active === "rh" && ["Funcionários", "EPI", "Uniformes", "Férias", "Cesta básica"].includes(selectedModule.name)) && !(active === "embalagem" && ["Controle de Bombonas", "Estoque de Embalagem"].includes(selectedModule.name)) && (
               <button
                 className="primary-button"
                 onClick={() => setDrawer({ mode: "new", record: null })}
@@ -604,7 +614,7 @@ export default function Dashboard() {
             )}
           </section>
           {active === "dashboard" ? (
-            <ExecutiveView onOpen={switchArea} notify={notify} canWrite={profile.role !== "viewer"} />
+            <ExecutiveView onOpen={switchArea} notify={notify} canManageErp={profile.role === "ceo" || profile.role === "manager"} />
           ) : active === "digitalizacao" ? (
             <DocumentCenter notify={notify} />
           ) : active === "produtos" ? (
@@ -613,10 +623,16 @@ export default function Dashboard() {
             <PedidosCenter notify={notify} canWrite={profile.role !== "viewer"} initialOpenOrderId={orderEditId} onInitialOpenConsumed={() => setOrderEditId(null)} onBuildRoute={(orderId) => { setRouteDraftOrderId(orderId); switchArea("logistica"); }} />
           ) : active === "clientes" ? (
             <ClientesCenter notify={notify} canWrite={profile.role !== "viewer"} />
+          ) : active === "funcionarios" ? (
+            <StaffJourney notify={notify} canWrite={profile.role !== "viewer"} />
+          ) : active === "galpao" || (active === "embalagem" && ["Controle de Bombonas", "Estoque de Embalagem"].includes(selectedModule?.name || "")) ? (
+            <WarehouseCenter notify={notify} canWrite={profile.role !== "viewer"} onBuildRoute={(orderId, date) => { setRouteDraftOrderId(orderId); setRouteDraftDate(date); switchArea("logistica"); }} />
+          ) : active === "rh" && (!selectedModule || ["Funcionários", "EPI", "Uniformes", "Férias", "Cesta básica"].includes(selectedModule.name)) ? (
+            <PeopleCenter onOpenLegacy={name => { if (name.startsWith("Caminhões")) { setFleetInitialTab(name.includes("Manutenção") ? "maintenance" : "vehicles"); switchArea("frota"); return; } const legacyModule = departments.rh.modules.find(item => item.name === name); if (legacyModule) void openModule(legacyModule); }} notify={notify} canWrite={profile.role === "ceo" || profile.role === "manager"} initialTab={selectedModule?.name === "EPI" || selectedModule?.name === "Uniformes" ? "EPI e uniformes" : selectedModule?.name || "Funcionários"} />
           ) : active === "frota" ? (
             <FleetCenter notify={notify} canWrite={profile.role !== "viewer"} initialTab={fleetInitialTab} />
           ) : active === "logistica" ? (
-            <LogisticsCenter notify={notify} canWrite={profile.role !== "viewer"} initialOrderId={routeDraftOrderId} onInitialOrderConsumed={() => setRouteDraftOrderId(null)} onEditOrder={(orderId) => { setOrderEditId(orderId); switchArea("pedidos"); }} onManageDrivers={() => { setFleetInitialTab("drivers"); switchArea("fleet"); }} />
+            <LogisticsCenter notify={notify} canWrite={profile.role !== "viewer"} canSync={profile.role === "ceo" || profile.role === "manager"} initialOrderId={routeDraftOrderId} initialRouteDate={routeDraftDate} onInitialOrderConsumed={() => { setRouteDraftOrderId(null); setRouteDraftDate(""); }} onEditOrder={(orderId) => { setOrderEditId(orderId); switchArea("pedidos"); }} onManageDrivers={() => { setFleetInitialTab("drivers"); switchArea("frota"); }} />
           ) : selectedModule?.name === "DRE e Relatórios" ? (
             <ProfitabilityCenter notify={notify} canWrite={profile.role !== "viewer"} />
           ) : selectedModule ? (
@@ -810,7 +826,7 @@ export default function Dashboard() {
   );
 }
 
-function ExecutiveView({ onOpen, notify, canWrite }: { onOpen: (key: string) => void; notify: (message: string) => void; canWrite: boolean }) {
+function ExecutiveView({ onOpen, notify, canManageErp }: { onOpen: (key: string) => void; notify: (message: string) => void; canManageErp: boolean }) {
   const [data, setData] = useState<{
     metrics: {
       records: number;
@@ -1020,7 +1036,7 @@ function ExecutiveView({ onOpen, notify, canWrite }: { onOpen: (key: string) => 
       </section>
       <CommercialInsights />
       <ManagementIndicators />
-      <ErpIntegration canWrite={canWrite} notify={notify} />
+      <ErpIntegration canWrite={canManageErp} notify={notify} />
       <section className="sector-shortcuts">
         <div className="section-title">
           <div>

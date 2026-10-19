@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getD1 } from "../../../db";
 import { canWrite, getActor } from "../authz";
+import { MAINTENANCE_TYPES, maintenanceDue, validDate, localDay } from "../../../lib/operations";
 
 type MaintRow = {
   id: number;
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
     status = String(body.status || "completed"),
     odometerKm = Number(body.odometerKm ?? 0),
     costCents = Number(body.costCents ?? 0);
-  if (!["Preventiva", "Corretiva", "Inspeção", "Pneus", "Outro"].includes(maintType))
+  if (!["Preventiva", "Corretiva", "Inspeção", "Pneus", "Outro", ...MAINTENANCE_TYPES].includes(maintType))
     return NextResponse.json(
       { error: "Tipo de manutenção inválido." },
       { status: 400 },
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest) {
       { error: "Situação da manutenção inválida." },
       { status: 400 },
     );
-  if (!Number.isFinite(odometerKm) || odometerKm < 0 || odometerKm > 9_999_999)
+  if (!Number.isSafeInteger(odometerKm) || odometerKm < 0 || odometerKm > 9_999_999)
     return NextResponse.json(
       { error: "Odômetro (km) inválido." },
       { status: 400 },
@@ -136,6 +137,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Custo inválido." }, { status: 400 });
   let serviceEpoch: number;
   const rawDate = String(body.serviceDate || "").trim();
+  try { if (rawDate) validDate(rawDate); } catch { return NextResponse.json({ error: "Data da manutenção inválida." }, { status: 400 }); }
+  if (status === "completed" && rawDate > localDay()) return NextResponse.json({ error: "Serviço concluído não pode estar no futuro." }, { status: 400 });
   if (rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
     serviceEpoch = Math.floor(new Date(`${rawDate}T12:00:00`).getTime() / 1000);
     if (!Number.isFinite(serviceEpoch))
@@ -145,11 +148,12 @@ export async function POST(request: NextRequest) {
       );
   } else serviceEpoch = Math.floor(Date.now() / 1000);
   const isDone = status === "completed";
-  const nextDueKm =
+  const specific = MAINTENANCE_TYPES.includes(maintType as typeof MAINTENANCE_TYPES[number]) ? maintenanceDue(maintType, fmt(serviceEpoch), odometerKm) : null;
+  const nextDueKm = specific ? (isDone ? specific.km : null) :
     isDone && vehicle.maint_interval_km !== null
       ? odometerKm + vehicle.maint_interval_km
       : null;
-  const nextDueDate =
+  const nextDueDate = specific ? (isDone && specific.date ? Math.floor(Date.parse(`${specific.date}T12:00:00Z`) / 1000) : null) :
     isDone && vehicle.maint_interval_months !== null
       ? serviceEpoch + vehicle.maint_interval_months * 30 * DAY
       : null;
@@ -182,6 +186,7 @@ export async function POST(request: NextRequest) {
       { error: "Não foi possível registrar a manutenção" },
       { status: 500 },
     );
+  if (isDone) await db.prepare("UPDATE vehicles SET odometer_km=GREATEST(odometer_km,?),updated_at=? WHERE id=?").bind(odometerKm, now, vehicleId).run();
   await db
     .prepare(
       "INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'create','vehicle_maintenance',?,?,?)",
@@ -244,7 +249,7 @@ export async function PUT(request: NextRequest) {
     status = String(body.status ?? current.status),
     odometerKm = Number(body.odometerKm ?? current.odometer_km),
     costCents = Number(body.costCents ?? current.cost_cents);
-  if (!["Preventiva", "Corretiva", "Inspeção", "Pneus", "Outro"].includes(maintType))
+  if (!["Preventiva", "Corretiva", "Inspeção", "Pneus", "Outro", ...MAINTENANCE_TYPES].includes(maintType))
     return NextResponse.json(
       { error: "Tipo de manutenção inválido." },
       { status: 400 },
@@ -254,7 +259,7 @@ export async function PUT(request: NextRequest) {
       { error: "Situação da manutenção inválida." },
       { status: 400 },
     );
-  if (!Number.isFinite(odometerKm) || odometerKm < 0 || odometerKm > 9_999_999)
+  if (!Number.isSafeInteger(odometerKm) || odometerKm < 0 || odometerKm > 9_999_999)
     return NextResponse.json(
       { error: "Odômetro (km) inválido." },
       { status: 400 },
@@ -264,6 +269,10 @@ export async function PUT(request: NextRequest) {
     ? Math.floor(new Date(`${rawDate}T12:00:00`).getTime() / 1000)
     : current.service_date;
   const isDone = status === "completed";
+  if (!Number.isSafeInteger(costCents) || costCents < 0) return NextResponse.json({ error: "Custo inválido." }, { status: 400 });
+  try { validDate(rawDate); } catch { return NextResponse.json({ error: "Data inválida." }, { status: 400 }); }
+  if (isDone && rawDate > localDay()) return NextResponse.json({ error: "Serviço concluído não pode estar no futuro." }, { status: 400 });
+  const specific = MAINTENANCE_TYPES.includes(maintType as typeof MAINTENANCE_TYPES[number]) ? maintenanceDue(maintType, fmt(serviceEpoch), odometerKm) : null;
   const now = Math.floor(Date.now() / 1000),
     updated = await db
       .prepare(
@@ -278,10 +287,10 @@ export async function PUT(request: NextRequest) {
         String(body.description ?? current.description ?? "").trim(),
         String(body.supplier ?? current.supplier ?? "").trim(),
         costCents,
-        isDone && vehicle?.maint_interval_km !== null
+        specific ? (isDone ? specific.km : null) : isDone && vehicle?.maint_interval_km !== null
           ? odometerKm + (vehicle?.maint_interval_km ?? 0)
           : null,
-        isDone && vehicle?.maint_interval_months !== null
+        specific ? (isDone && specific.date ? Math.floor(Date.parse(`${specific.date}T12:00:00Z`) / 1000) : null) : isDone && vehicle?.maint_interval_months !== null
           ? serviceEpoch + (vehicle?.maint_interval_months ?? 0) * 30 * DAY
           : null,
         status,
@@ -295,6 +304,7 @@ export async function PUT(request: NextRequest) {
       { error: "Não foi possível atualizar a manutenção" },
       { status: 500 },
     );
+  if (isDone) await db.prepare("UPDATE vehicles SET odometer_km=GREATEST(odometer_km,?),updated_at=? WHERE id=?").bind(odometerKm, now, current.vehicle_id).run();
   await db
     .prepare(
       "INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'update','vehicle_maintenance',?,?,?)",

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getD1 } from "../../../db";
-import { canWrite, getActor } from "../authz";
+import { canValidate, getActor } from "../authz";
 import { externalErpUrl } from "./url-safety";
 import { supabaseAdmin } from "../../../lib/supabase/admin";
 
@@ -18,7 +18,7 @@ export async function PUT(request: NextRequest) {
   try {
     const actor = await getActor();
     if (!actor) return NextResponse.json({ error: "Acesso não autorizado" }, { status: 401 });
-    if (!canWrite(actor)) return NextResponse.json({ error: "Seu perfil possui acesso somente para consulta" }, { status: 403 });
+    if (!canValidate(actor)) return NextResponse.json({ error: "A configuração do ERP exige perfil de gestor." }, { status: 403 });
     const body = await request.json() as Record<string, unknown>;
     const { baseUrl, ordersPath } = externalErpUrl(String(body.baseUrl || "").trim(), String(body.ordersPath || "/orders").trim());
     const { ordersPath: customersPath } = externalErpUrl(baseUrl, String(body.customersPath || "/clientes").trim());

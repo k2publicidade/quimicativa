@@ -49,12 +49,14 @@ const KIND_ORDER: Record<string, number> = {
   boleto: 2,
   laudo: 3,
   ficha: 4,
+  canhoto: 5,
 };
 const KIND_LABELS: Record<string, string> = {
   nf: "Nota fiscal",
   boleto: "Boleto",
   laudo: "Laudo",
   ficha: "Ficha de risco",
+  canhoto: "Canhoto assinado",
 };
 
 const fmtBRL = (cents: number) =>

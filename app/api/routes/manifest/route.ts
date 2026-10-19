@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getD1 } from "../../../../db";
 import { getActor } from "../../authz";
+import { allOperations } from "../../../../lib/operations-store";
 
 type RouteRow = {
   id: number; code: string; name: string; vehicle_id: number; driver_id: number | null; driver_name: string; route_date: number;
@@ -57,6 +58,9 @@ export async function GET(request: NextRequest) {
   const hazardousLoad = items.results.some(item => item.un_number || item.hazard_class || item.flammable || item.controlled);
   const driver = hazardousLoad && route.driver_id ? await db.prepare("SELECT mopp_expiry FROM drivers WHERE id=?").bind(route.driver_id).first<{ mopp_expiry: number | null }>() : null;
   const hasValidMopp = Boolean(driver?.mopp_expiry && driver.mopp_expiry >= route.route_date);
+  const operations = await allOperations(db), crew = operations.find(row => row.kind === "crew" && row.data.routeId === String(routeId));
+  const events = await db.prepare("SELECT event_type,occurred_at,odometer_km FROM route_events WHERE route_id=? AND event_type IN ('departure','return','route_changed') ORDER BY occurred_at,id").bind(routeId).all<{ event_type: string; occurred_at: number; odometer_km: number | null }>();
+  const departure = events.results.find(row => row.event_type === "departure"), returned = events.results.find(row => row.event_type === "return");
 
   const document = await PDFDocument.create();
   const font = await document.embedFont(StandardFonts.Helvetica);
@@ -85,6 +89,12 @@ export async function GET(request: NextRequest) {
   y -= 18;
   text(`Origem e retorno: ${route.origin_address || "não informado"}`, 38, 8, false, muted);
   text(`Km previstos: ${number(route.planned_km, 1)}`, 655, 8, false, muted);
+  y -= 15;
+  wrap(`Ajudantes: ${crew ? crew.data.helpers || "Saída sem ajudantes" : "Equipe não confirmada"}`, 110).forEach(value => { text(value, 38, 8, true); y -= 11; });
+  const journeyStamp = (event: typeof departure) => event ? `${new Date(event.occurred_at * 1000).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} / ${event.odometer_km == null ? "km não registrado" : `${number(event.odometer_km)} km`}` : "a registrar";
+  text(`Saída: ${journeyStamp(departure)} | Retorno: ${journeyStamp(returned)}`, 38, 8);
+  y -= 14;
+  text(`Alteração da rota: ${events.results.some(event => event.event_type === "route_changed") ? "SIM - consultar histórico no sistema" : "não registrada"}`, 38, 8, true);
   y -= 22;
 
   const totalWeight = stops.results.reduce((sum, stop) => sum + Number(stop.weight_kg || 0), 0);
@@ -127,6 +137,13 @@ export async function GET(request: NextRequest) {
     y -= 13;
     (itemLines.length ? itemLines : [stop.package_summary || "Itens não informados"]).forEach(value => { text(value, 82, 8); y -= 10; });
     y -= 18;
+    const preparation = operations.find(row => row.kind === "preparation" && row.data.orderId === String(stop.order_id));
+    const report = operations.find(row => row.kind === "report" && row.data.stopId === String(stop.id));
+    const operationalLines = preparation ? wrap(`GALPÃO: ${preparation.data.bombonas} bombonas; ${preparation.data.tampas} tampas; ${preparation.data.lacres} lacres; ${preparation.data.ibcs} IBCs 1000L; Bomba: ${preparation.data.needsPump === "yes" ? `${preparation.data.pumpQty} x ${preparation.data.pumpType}` : "não precisa"}; Mangote: ${preparation.data.needsHose === "yes" ? preparation.data.hoseSize : "não precisa"}; ${preparation.data.clamps} abraçadeiras; ${preparation.data.couplings} engates; ${preparation.data.carts} carrinhos. ${preparation.data.notes || ""}`, 110) : ["GALPÃO: requisitos de preparação não informados."];
+    if (report) operationalLines.push(...wrap(`RETORNO: ${report.data.returnDescription}. Observações: ${report.data.deliveryNotes || "sem observações"}. Bombonas: ${report.data.bombonasReturned}/${report.data.bombonasSent} retornaram. Canhoto: ${report.data.signed === "yes" ? `assinado por ${report.data.receiver}` : `pendente - ${report.data.unsignedReason}`}.`, 110));
+    else operationalLines.push("RETORNO: ______________________________________________________________________________________");
+    operationalLines.push("Recebedor / assinatura: ____________________________  Bombonas devolvidas: ______  Pendentes: ______");
+    for (const value of operationalLines) { ensureSpace(24); text(value, 42, 8, false, muted); y -= 12; } y -= 16;
   }
 
   ensureSpace(74);

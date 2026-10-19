@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import type { D1PreparedStatement } from "@cloudflare/workers-types";
 import { getD1 } from "../../../../db";
-import { canWrite, getActor } from "../../authz";
+import { canValidate, getActor } from "../../authz";
 import { externalErpUrl } from "../url-safety";
 import { supabaseAdmin } from '../../../../lib/supabase/admin';
 import { syncVhsysBatch } from '../../../../lib/vhsys-sync';
@@ -28,7 +28,7 @@ const normalizedItems = (order: Record<string, unknown>): NormalizedItem[] => {
 export async function POST(request: NextRequest) {
   const actor = await getActor();
   if (!actor) return NextResponse.json({ error: "Acesso não autorizado" }, { status: 401 });
-  if (!canWrite(actor)) return NextResponse.json({ error: "Seu perfil possui acesso somente para consulta" }, { status: 403 });
+  if (!canValidate(actor)) return NextResponse.json({ error: "A sincronização do ERP exige perfil de gestor." }, { status: 403 });
   const db = getD1(), config = await db.prepare("SELECT * FROM erp_integrations WHERE active=1 ORDER BY id DESC LIMIT 1").first<Config>();
   if (!config) return NextResponse.json({ error: "Configure e ative a integração com o ERP antes de sincronizar." }, { status: 400 });
   try {

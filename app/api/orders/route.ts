@@ -258,7 +258,7 @@ export async function GET(request: NextRequest) {
   const ids = orders.results.map((o) => o.id);
   const customerIds = [...new Set(orders.results.map((o) => o.customer_id))];
   let customers: CustomerRow[] = [],
-    itemsAgg: { order_id: number; count: number; total_cents: number; total_weight_kg: number; total_volume_m3: number; missing_volume_items: number }[] = [],
+    itemsAgg: { order_id: number; count: number; total_cents: number; total_weight_kg: number; total_volume_m3: number; missing_volume_items: number; items_summary: string }[] = [],
     docsAgg: { order_id: number; kind: string; order_item_id: number | null }[] = [];
   if (ids.length) {
     const placeholders = ids.map(() => "?").join(",");
@@ -274,13 +274,14 @@ export async function GET(request: NextRequest) {
       db
         .prepare(
           `SELECT order_id,COUNT(*) AS count,COALESCE(SUM(quantity*unit_price_cents),0) AS total_cents,
+             STRING_AGG(product_name || ': ' || CAST(quantity AS text) || ' ' || unit, '; ' ORDER BY id) AS items_summary,
              COALESCE(SUM(CASE WHEN weight_kg>0 THEN weight_kg WHEN package_count>0 AND package_unit_weight_kg>0 THEN package_count*package_unit_weight_kg WHEN LOWER(unit) IN ('kg','quilo','quilos') THEN quantity ELSE 0 END),0) AS total_weight_kg,
              COALESCE(SUM(volume_m3),0) AS total_volume_m3,
              SUM(CASE WHEN volume_m3<=0 THEN 1 ELSE 0 END) AS missing_volume_items
            FROM order_items WHERE order_id IN (${placeholders}) GROUP BY order_id`,
         )
         .bind(...ids)
-        .all<{ order_id: number; count: number; total_cents: number; total_weight_kg: number; total_volume_m3: number; missing_volume_items: number }>()
+        .all<{ order_id: number; count: number; total_cents: number; total_weight_kg: number; total_volume_m3: number; missing_volume_items: number; items_summary: string }>()
         .then((r) => r.results),
       db
         .prepare(
@@ -314,6 +315,7 @@ export async function GET(request: NextRequest) {
       totalVolumeM3: Number(agg?.total_volume_m3 ?? 0),
       missingVolumeItems: Number(agg?.missing_volume_items ?? 0),
       itemsCount: itemCount,
+      itemsSummary: agg?.items_summary || "",
       progress: computeOrderProgress(itemCount, docRows),
     });
   });

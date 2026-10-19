@@ -1,0 +1,7 @@
+.git
+.next
+.npm-cache*
+.tmp-test
+node_modules
+.env*
+tsconfig.tsbuildinfo

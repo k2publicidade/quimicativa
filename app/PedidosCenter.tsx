@@ -78,6 +78,7 @@ const flowShort: Record<string, string> = {
   boleto: "Boleto",
   laudo: "Laudo",
   ficha: "Ficha",
+  canhoto: "Canhoto",
 };
 const orderStatuses = [
   { value: "draft", label: "Rascunho" },
@@ -1515,6 +1516,7 @@ function DocumentPipeline({
     boleto: active.filter((d) => d.kind === "boleto"),
     laudo: active.filter((d) => d.kind === "laudo"),
     ficha: active.filter((d) => d.kind === "ficha"),
+    canhoto: active.filter((d) => d.kind === "canhoto"),
   };
 
   const [kind, setKind] = useState("nf");
@@ -1615,7 +1617,7 @@ function DocumentPipeline({
         </div>
       </header>
       <div className="ord-docs">
-        {flowKeys.map((key) => {
+        {[...flowKeys, "canhoto"].map((key) => {
           const group = groups[key];
           const label =
             key === "nf"
@@ -1624,7 +1626,7 @@ function DocumentPipeline({
                 ? "Boleto"
                 : key === "laudo"
                   ? "Laudos (por produto)"
-                  : "Fichas de risco (por produto)";
+                  : key === "canhoto" ? "Canhotos assinados" : "Fichas de risco (por produto)";
           return (
             <div key={key}>
               <div
@@ -1654,7 +1656,7 @@ function DocumentPipeline({
                       {doc.fileName}
                       <small>
                         {itemName(doc.orderItemId) ??
-                          (doc.kind === "nf" || doc.kind === "boleto"
+                          (doc.kind === "nf" || doc.kind === "boleto" || doc.kind === "canhoto"
                             ? "Pedido inteiro"
                             : "Produto removido")}
                         {doc.metadata.numero ? ` · Nº ${doc.metadata.numero}` : ""}

@@ -1,5 +1,7 @@
 # dependencies
 /node_modules
+/.npm-cache/
+/.npm-cache-operations/
 /node_modules.corrupt*
 /.pnp
 .pnp.*

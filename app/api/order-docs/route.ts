@@ -13,19 +13,21 @@ const ALLOWED_TYPES = new Set([
   "application/xml",
   "text/xml",
 ]);
-const KINDS = ["nf", "boleto", "laudo", "ficha"] as const;
+const KINDS = ["nf", "boleto", "laudo", "ficha", "canhoto"] as const;
 type Kind = (typeof KINDS)[number];
 const KIND_LABELS: Record<Kind, string> = {
   nf: "Nota fiscal",
   boleto: "Boleto",
   laudo: "Laudo",
   ficha: "Ficha de risco",
+  canhoto: "Canhoto assinado",
 };
 const METADATA_KEYS: Record<Kind, string[]> = {
   nf: ["numero", "serie", "chaveAcesso", "dataEmissao", "valor", "paginas"],
   boleto: ["numero", "vencimento", "valor", "linhaDigitavel"],
   laudo: ["numero", "data", "lote"],
   ficha: ["produto", "numeroOnu", "data"],
+  canhoto: ["recebedor", "dataEntrega"],
 };
 type DocRow = {
   id: number;
@@ -210,6 +212,7 @@ export async function POST(request: NextRequest) {
       { error: "Pedido ou tipo de documento inválido" },
       { status: 400 },
     );
+  if (kind === "canhoto" && (file.type.includes("xml") || file.type === "image/tiff")) return NextResponse.json({ error: "Envie o canhoto assinado em PDF, JPEG, PNG ou WebP." }, { status: 415 });
   const order = await db
     .prepare("SELECT id,number,status FROM orders WHERE id=?")
     .bind(orderId)
@@ -432,6 +435,10 @@ export async function PUT(request: NextRequest) {
       { error: "Situação do documento inválida" },
       { status: 400 },
     );
+  if (current.kind === "canhoto" && status === "archived") {
+    const referenced = await db.prepare("SELECT id FROM records WHERE department='operacao' AND module='ops:report' AND CAST(metadata AS jsonb)->>'receiptId'=? AND CAST(metadata AS jsonb)->>'signed'='yes' LIMIT 1").bind(String(id)).first();
+    if (referenced) return NextResponse.json({ error: "Este canhoto comprova um relatório de entrega. Substitua o vínculo no relatório antes de arquivar." }, { status: 409 });
+  }
   const updated = await db
     .prepare(
       "UPDATE order_documents SET metadata=?,status=?,notes=?,updated_at=? WHERE id=? RETURNING *",

@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import RouteMap from "./RouteMap";
+import RouteDashboard from "./RouteDashboard";
+import RouteOperations from "./RouteOperations";
+import { syncErp } from "../lib/sync-erp-client";
+import { localDay } from "../lib/operations";
 
 type Order = { id: number; number: string; customerName: string; customerDistrict: string; customerCity: string; customerState: string; deliveryDate: string; status: string; totalCents: number; totalWeightKg: number; totalVolumeM3: number; missingVolumeItems: number };
 type Vehicle = { id: number; plate: string; model: string; capacityKg: number | null; capacityM3: number | null; status: string };
@@ -36,7 +40,11 @@ const routeUtilization = (route: Pick<Route, "occupancy" | "volumeOccupancy" | "
 
 const ROUTE_DRAFT_KEY = "quimicativa:route-draft";
 
-export default function LogisticsCenter({ notify, canWrite, initialOrderId = null, onInitialOrderConsumed, onEditOrder, onManageDrivers }: { notify: (message: string) => void; canWrite: boolean; initialOrderId?: number | null; onInitialOrderConsumed?: () => void; onEditOrder?: (orderId: number | null) => void; onManageDrivers?: () => void }) {
+export default function LogisticsCenter({ notify, canWrite, canSync = false, initialOrderId = null, initialRouteDate = "", onInitialOrderConsumed, onEditOrder, onManageDrivers }: { notify: (message: string) => void; canWrite: boolean; canSync?: boolean; initialOrderId?: number | null; initialRouteDate?: string; onInitialOrderConsumed?: () => void; onEditOrder?: (orderId: number | null) => void; onManageDrivers?: () => void }) {
+  const [activeView, setActiveView] = useState<"dashboard" | "planning">(initialOrderId ? "planning" : "dashboard");
+  const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState("");
+  const [integration, setIntegration] = useState<{ active: boolean; lastSyncAt: number | null } | null>(null);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -46,7 +54,7 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
   const [orderIds, setOrderIds] = useState<number[]>([]);
   const [name, setName] = useState("");
   const [driverId, setDriverId] = useState("");
-  const [routeDate, setRouteDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [routeDate, setRouteDate] = useState(() => localDay());
   const [originAddress, setOriginAddress] = useState("");
   const [plannedKm, setPlannedKm] = useState("");
   const [estimatedCost, setEstimatedCost] = useState("");
@@ -62,7 +70,7 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
         setOrderIds(Array.isArray(draft.orderIds) ? draft.orderIds : []);
         setName(draft.name ?? "");
         setDriverId(draft.driverId ?? "");
-        setRouteDate(draft.routeDate ?? new Date().toISOString().slice(0, 10));
+        setRouteDate(draft.routeDate ?? localDay());
         setOriginAddress(draft.originAddress ?? "");
         setPlannedKm(draft.plannedKm ?? "");
         setEstimatedCost(draft.estimatedCost ?? "");
@@ -82,10 +90,11 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
   const load = async () => {
     const [routesResponse, ordersResponse, vehiclesResponse, driversResponse] = await Promise.all([
       fetch("/api/routes"),
-      fetch("/api/orders?status=active"),
+      fetch("/api/orders"),
       fetch("/api/vehicles"),
       fetch("/api/drivers"),
     ]);
+    if (!routesResponse.ok || !ordersResponse.ok || !vehiclesResponse.ok || !driversResponse.ok) throw new Error("Falha ao carregar os dados de logística");
     const routeData = await routesResponse.json() as { routes?: Route[] };
     const orderData = await ordersResponse.json() as { orders?: Order[] };
     const vehicleData = await vehiclesResponse.json() as { vehicles?: Vehicle[] };
@@ -98,10 +107,31 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
 
   useEffect(() => {
     load().catch(() => notify("Não foi possível carregar a operação logística"));
+    fetch("/api/integrations").then(response => response.ok ? response.json() : null).then((data: { integration?: { active: boolean; lastSyncAt: number | null } } | null) => setIntegration(data?.integration ?? null)).catch(() => undefined);
   }, []);
 
+  const syncOrders = async () => {
+    setSyncing(true);
+    try {
+      const result = await syncErp(setSyncProgress);
+      await load();
+      const response = await fetch("/api/integrations");
+      if (response.ok) {
+        const data = await response.json() as { integration?: { active: boolean; lastSyncAt: number | null } };
+        setIntegration(data.integration ?? null);
+      }
+      notify(result.message);
+      setSyncProgress("");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Não foi possível sincronizar os pedidos");
+    } finally {
+      setSyncProgress("");
+      setSyncing(false);
+    }
+  };
+
   const activeOrders = useMemo(
-    () => orders.filter(order => !routes.some(route => route.stops.some(stop => stop.orderId === order.id))),
+    () => orders.filter(order => !["cancelled", "delivered", "completed"].includes(order.status) && !routes.some(route => route.status !== "cancelled" && route.stops.some(stop => stop.orderId === order.id && (route.status !== "completed" || stop.status === "completed")))),
     [orders, routes],
   );
   const regionalOrders = useMemo(() => {
@@ -131,14 +161,15 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
 
   useEffect(() => {
     if (!initialOrderId) return;
+    setActiveView("planning");
     const order = activeOrders.find(item => item.id === initialOrderId);
     if (!order) return;
     setOrderIds([order.id]);
     setName(current => current || `Entrega ${order.number}${order.customerCity ? ` — ${order.customerCity}` : ""}`);
-    setRouteDate(current => current || order.deliveryDate || new Date().toISOString().slice(0, 10));
+    setRouteDate(initialRouteDate || order.deliveryDate || localDay());
     setOriginAddress(current => current || "Rua Isidro Rocha, 48 — Vigário Geral — Rio de Janeiro/RJ — 21241-180");
     onInitialOrderConsumed?.();
-  }, [initialOrderId, activeOrders, onInitialOrderConsumed]);
+  }, [initialOrderId, initialRouteDate, activeOrders, onInitialOrderConsumed]);
 
   const reorder = async (routeId: number, stopIndex: number, direction: -1 | 1) => {
     const target = routes.find(item => item.id === routeId);
@@ -210,6 +241,10 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
   };
 
   return <div className="logistics-center">
+    <header className="rd-hero"><div><span>OPERAÇÃO LOGÍSTICA</span><h1>Roteiros de entrega</h1><p>Controle a carga, acompanhe os pedidos e organize as saídas da frota.</p></div><div className="rd-hero-actions">{integration?.lastSyncAt && <small>vhsys sincronizada em {new Date(integration.lastSyncAt * 1000).toLocaleString("pt-BR")}</small>}{canSync && <button type="button" className="rd-sync" disabled={syncing || !integration?.active} onClick={syncOrders}>{syncing ? "Sincronizando..." : "Sincronizar vhsys"}</button>}{canWrite && <button type="button" className="rd-create" onClick={() => setActiveView("planning")}>+ Montar rota</button>}</div></header>
+    {syncProgress && <div className="rd-sync-progress" role="status">{syncProgress}</div>}
+    <nav className="rd-main-tabs" aria-label="Visões da logística"><button type="button" className={activeView === "dashboard" ? "active" : ""} onClick={() => setActiveView("dashboard")}>Visão geral</button><button type="button" className={activeView === "planning" ? "active" : ""} onClick={() => setActiveView("planning")}>Planejamento e monitoramento</button></nav>
+    {activeView === "dashboard" ? <RouteDashboard routes={routes} orders={orders} onPlan={() => setActiveView("planning")} onOpenRoute={id => { setSelected(id); setActiveView("planning"); }} /> : <>
     <section className="operation-flow logistics-flow" aria-label="Fluxo operacional">
       <button type="button" className="done flow-step-button" onClick={() => onEditOrder?.(orderIds.length === 1 ? orderIds[0] : null)} disabled={!onEditOrder}><b>✓</b><span><strong>Pedido montado</strong><small>{orderIds.length === 1 ? "Revisar e editar dados comerciais e carga" : "Voltar aos pedidos"}</small></span><em>Editar</em></button><i>→</i>
       <div className="active"><b>2</b><span><strong>Montar rota</strong><small>Escalar caminhão e motorista</small></span></div><i>→</i>
@@ -282,6 +317,7 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
       </section>
     </div>
 
+    {route && <RouteOperations key={route.id} route={route} canWrite={canWrite} notify={notify} onReload={load} />}
     {route && <RouteDetails route={route} canWrite={canWrite} notify={notify} reload={load} reorder={reorder} />}
     {route && <section className="panel route-finance">
       <div><span>Faturamento da rota</span><strong>{brl(route.revenueCents)}</strong></div>
@@ -290,6 +326,7 @@ export default function LogisticsCenter({ notify, canWrite, initialOrderId = nul
     </section>}
     {route && <JourneyKpis route={route} />}
     {route && <RouteMonitoring route={route} canWrite={canWrite} onRegister={registerEvent} />}
+    </>}
   </div>;
 }
 

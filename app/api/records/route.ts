@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getD1 } from "../../../db";
 import { getModuleConfig } from "../../module-config";
-import { canWrite, getActor } from "../authz";
+import { canWrite, canValidate, getActor } from "../authz";
 
 type RecordRow = {
   source_payload?: unknown;
@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
     );
   const department = request.nextUrl.searchParams.get("department")?.trim();
   const moduleName = request.nextUrl.searchParams.get("module")?.trim();
+  if (department === "rh" && !canValidate(user)) return NextResponse.json({ error: "A gestão de RH exige perfil de gerente ou direção." }, { status: 403 });
   if (!department || !moduleName || !validateDomain(department, moduleName))
     return NextResponse.json(
       { error: "Setor ou módulo inválido" },
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
   const department = String(body.department ?? "").trim(),
     moduleName = String(body.module ?? "").trim(),
     title = String(body.title ?? "").trim();
+  if (department === "rh" && !canValidate(user)) return NextResponse.json({ error: "Somente gerentes e direção podem alterar o RH." }, { status: 403 });
   if (
     !department ||
     !moduleName ||
@@ -203,6 +205,7 @@ export async function PUT(request: NextRequest) {
     title = String(body.title ?? "").trim(),
     department = String(body.department ?? "").trim(),
     moduleName = String(body.module ?? "").trim();
+  if (department === "rh" && !canValidate(user)) return NextResponse.json({ error: "Somente gerentes e direção podem alterar o RH." }, { status: 403 });
   if (
     !Number.isInteger(id) ||
     !title ||
