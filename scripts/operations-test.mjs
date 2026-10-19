@@ -13,7 +13,7 @@ const shims = {
   admin: `export const supabaseAdmin = () => ({ rpc: globalThis.__opsRpc });`,
   storage: `export const getFiles = () => ({ put: async (key, bytes) => globalThis.__opsFiles.set(key, bytes), get: async key => { const bytes = globalThis.__opsFiles.get(key); return bytes ? { body: bytes, arrayBuffer: async () => bytes } : null; }, delete: async key => globalThis.__opsFiles.delete(key) });`,
 };
-const endpoints = ["operations", "route-events", "routes", "routes/manifest", "orders", "vehicles", "drivers", "vehicle-maintenance", "fleet-schedule", "order-docs", "records"];
+const endpoints = ["operations", "route-events", "routes", "routes/manifest", "orders", "vehicles", "drivers", "vehicle-maintenance", "fleet-schedule", "order-docs", "records", "crm-insights"];
 await build({ entryPoints: Object.fromEntries([...endpoints.map(name => [name, `app/api/${name}/route.ts`]), ["domain", "lib/operations.ts"]]), bundle: true, format: "esm", platform: "node", packages: "external", outdir: out, outExtension: { ".js": ".mjs" }, plugins: [{ name: "local-test-adapters", setup(builder) {
   builder.onResolve({ filter: /^(next\/server)$|authz$|supabase\/(admin|storage)$/ }, args => ({ path: args.path === "next/server" ? args.path : args.path.endsWith("authz") ? "authz" : args.path.endsWith("admin") ? "admin" : "storage", namespace: "ops-test" }));
   builder.onLoad({ filter: /.*/, namespace: "ops-test" }, args => ({ contents: shims[args.path], loader: "js" }));
@@ -130,6 +130,16 @@ try {
   const changed = await request("routes", { id: route.id, orderIds: [2, 1], changeReason: "Janela de recebimento" }, 200, "PUT"); route = changed.route;
   assert.equal(route.stops[0].orderId, 2); assert.equal(route.events.filter(row => row.eventType === "route_changed").length, 1);
   pass("Preparação com bomba/mangote e rotas: carga atômica, alocação única e alteração rastreável");
+
+  await database.query("UPDATE customers SET city='Rio de Janeiro' WHERE id=1");
+  const insightsNow = Math.floor(Date.now() / 1000);
+  await database.query("UPDATE orders SET order_date=$1 WHERE id=1", [insightsNow - 90 * 86400]);
+  await database.query("UPDATE orders SET order_date=$1 WHERE id=2", [insightsNow - 60 * 86400]);
+  const insights = await request("crm-insights", null, 200, "GET");
+  assert.equal(insights.customersTracked, 1);
+  assert.equal(insights.routeOpportunities.length, 1);
+  assert.equal(insights.routeOpportunities[0].remainingKg, 480);
+  pass("Inteligência comercial agrega cidades e capacidade das rotas no PostgreSQL");
 
   await request("route-events", { routeId: route.id, eventType: "departure", odometerKm: 1000 }, 400);
   await save("crew", { routeId: route.id, helperIds: String(mateus.id) }, 400);
