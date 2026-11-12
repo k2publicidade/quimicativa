@@ -16,6 +16,7 @@ import "./management-details.css";
 import "./fleet.css";
 import "./route-dashboard.css";
 import "./operations.css";
+import "./route-board.css";
 
 const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
 

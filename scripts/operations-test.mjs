@@ -131,6 +131,18 @@ try {
   assert.equal(route.stops[0].orderId, 2); assert.equal(route.events.filter(row => row.eventType === "route_changed").length, 1);
   pass("Preparação com bomba/mangote e rotas: carga atômica, alocação única e alteração rastreável");
 
+  await request("routes", { id: route.id, removeOrderIds: [1, 2] }, 400, "PATCH");
+  await request("routes", { id: route.id, addOrderIds: [2] }, 409, "PATCH");
+  route = (await request("routes", { id: route.id, removeOrderIds: [1] }, 200, "PATCH")).route;
+  assert.deepEqual(route.stops.map(row => row.orderId), [2]);
+  route = (await request("routes", { id: route.id, addOrderIds: [1] }, 200, "PATCH")).route;
+  assert.deepEqual(route.stops.map(row => [row.orderId, row.sequence]), [[2, 1], [1, 2]]);
+  assert.equal(route.loadedKg, 20);
+  assert.equal((await request("routes", null, 200, "GET", `?date=${today}`)).routes.length, 1);
+  assert.equal((await request("routes", null, 200, "GET", `?date=${tomorrow}`)).routes.length, 0);
+  await request("routes", null, 400, "GET", "?date=amanha");
+  pass("Inclusão e retirada de pedidos em rota planejada e consulta das rotas por data");
+
   await database.query("UPDATE customers SET city='Rio de Janeiro' WHERE id=1");
   const insightsNow = Math.floor(Date.now() / 1000);
   await database.query("UPDATE orders SET order_date=$1 WHERE id=1", [insightsNow - 90 * 86400]);
@@ -193,6 +205,10 @@ try {
   const manifestResponse = await apis["routes/manifest"].GET({ nextUrl: new URL("http://localhost/api/routes/manifest?id=1") });
   assert.equal(manifestResponse.status, 200); assert.equal(manifestResponse.headers.get("Content-Type"), "application/pdf");
   const manifest = await PDFDocument.load(await manifestResponse.arrayBuffer()); assert.ok(manifest.getPageCount() > 0);
+  const dayManifest = await apis["routes/manifest"].GET({ nextUrl: new URL(`http://localhost/api/routes/manifest?date=${today}`) });
+  assert.equal(dayManifest.status, 200); assert.ok((await PDFDocument.load(await dayManifest.arrayBuffer())).getPageCount() >= 3);
+  assert.equal((await apis["routes/manifest"].GET({ nextUrl: new URL("http://localhost/api/routes/manifest?date=2000-01-01") })).status, 404);
+  assert.equal((await apis["routes/manifest"].GET({ nextUrl: new URL("http://localhost/api/routes/manifest?ids=1,2") })).status, 200);
   pass("Upload privado e vinculação de canhoto assinado após o retorno da rota");
 
   for (const maintType of domain.MAINTENANCE_TYPES) await request("vehicle-maintenance", { vehicleId: 1, maintType, serviceDate: today, odometerKm: 1040, status: "completed", costCents: 0, description: "Serviço realizado" }, 201);
