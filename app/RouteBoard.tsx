@@ -14,7 +14,8 @@ export type BoardVehicle = { id: number; plate: string; model: string; capacityK
 export type BoardDriver = { id: number; name: string; licenseCategory: string; status: string; alerts: string[] };
 export type BoardRoute = { id: number; code: string; name: string; vehicleId?: number; plate: string; driverName: string; driverId?: number | null; routeDate: string; status: string; loadedKg: number; capacityKg: number | null; capacityM3: number | null; loadedM3: number; updatedAt?: number; stops: { id: number; orderId: number; orderNumber: string; customerName: string; sequence: number; address: string; weightKg: number; packageSummary: string; status: string }[] };
 
-type Lane = { key: string; vehicleId: string; driverId: string; name: string; orderIds: number[]; error?: string };
+type Lane = { key: string; vehicleId: string; driverId: string; name: string; orderIds: number[]; note?: string; error?: string };
+type Suggestion = { date: string; source: "deepseek" | "automatic"; generatedAt: number; generatedBy: string; aiError: string; orderCount: number; sync: string; summary: string; warnings: string[]; routes: { vehicleId: number; driverId: number; orderIds: number[]; name: string; reason: string }[]; unassigned: { orderId: number; reason: string }[] };
 type Scope = "day" | "late" | "all";
 
 export const DEFAULT_ORIGIN = "Rua Isidro Rocha, 48 — Vigário Geral — Rio de Janeiro/RJ — 21241-180";
@@ -39,6 +40,19 @@ export default function RouteBoard({ orders, routes, vehicles, drivers, notify, 
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [savedBusy, setSavedBusy] = useState<number | null>(null);
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [aiConfigured, setAiConfigured] = useState(true);
+  const [suggesting, setSuggesting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSuggestion(null);
+    fetch(`/api/routes/suggest?date=${date}`, { cache: "no-store" }).then(response => response.ok ? response.json() : null).then((data: { suggestion?: Suggestion | null; aiConfigured?: boolean } | null) => {
+      if (cancelled || !data) return;
+      setSuggestion(data.suggestion ?? null); setAiConfigured(data.aiConfigured !== false);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [date]);
 
   useEffect(() => { const saved = read(ORIGIN_KEY); if (saved) setOrigin(saved); }, []);
   useEffect(() => { write(ORIGIN_KEY, origin.trim() ? origin : null); }, [origin]);
@@ -47,12 +61,12 @@ export default function RouteBoard({ orders, routes, vehicles, drivers, notify, 
   useEffect(() => {
     let draft: Lane[] = [];
     try { const parsed = JSON.parse(read(boardKey(date)) || "[]"); if (Array.isArray(parsed)) draft = parsed; } catch { draft = []; }
-    setLanes(draft.map(lane => ({ key: String(lane.key || newKey()), vehicleId: String(lane.vehicleId || ""), driverId: String(lane.driverId || ""), name: String(lane.name || ""), orderIds: Array.isArray(lane.orderIds) ? lane.orderIds.map(Number) : [] })));
+    setLanes(draft.map(lane => ({ key: String(lane.key || newKey()), vehicleId: String(lane.vehicleId || ""), driverId: String(lane.driverId || ""), name: String(lane.name || ""), note: lane.note ? String(lane.note) : undefined, orderIds: Array.isArray(lane.orderIds) ? lane.orderIds.map(Number) : [] })));
     setLoadedDate(date);
   }, [date]);
   useEffect(() => {
     if (loadedDate !== date) return;
-    write(boardKey(date), lanes.length ? JSON.stringify(lanes.map(lane => ({ key: lane.key, vehicleId: lane.vehicleId, driverId: lane.driverId, name: lane.name, orderIds: lane.orderIds }))) : null);
+    write(boardKey(date), lanes.length ? JSON.stringify(lanes.map(lane => ({ key: lane.key, vehicleId: lane.vehicleId, driverId: lane.driverId, name: lane.name, note: lane.note, orderIds: lane.orderIds }))) : null);
   }, [lanes, date, loadedDate]);
 
   const orderById = useMemo(() => new Map(orders.map(order => [order.id, order])), [orders]);
@@ -162,6 +176,34 @@ export default function RouteBoard({ orders, routes, vehicles, drivers, notify, 
     notify(left ? `Sugestão pronta. ${left} pedido(s) não couberam nos caminhões livres.` : "Sugestão pronta. Revise e clique em Criar rotas.");
   };
 
+  /** Pede uma nova sugestão (VHSYS atualizado + DeepSeek) para o dia escolhido. */
+  const generateSuggestion = async () => {
+    setSuggesting(true);
+    try {
+      const response = await fetch("/api/routes/suggest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, sync: true }) });
+      const data = await response.json() as { suggestion?: Suggestion; aiConfigured?: boolean; error?: string };
+      if (!response.ok || !data.suggestion) throw new Error(data.error || "Não foi possível gerar a sugestão.");
+      await reload().catch(() => undefined);
+      setSuggestion(data.suggestion); setAiConfigured(data.aiConfigured !== false);
+      notify(data.suggestion.routes.length ? "Sugestão pronta. Confira e clique em Aplicar no quadro." : data.suggestion.summary);
+    } catch (error) { notify(error instanceof Error ? error.message : "Não foi possível gerar a sugestão."); }
+    finally { setSuggesting(false); }
+  };
+  /** Coloca a sugestão no quadro, só com pedidos, caminhões e motoristas ainda disponíveis. */
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    const next: Lane[] = suggestion.routes.map(route => ({
+      key: newKey(),
+      vehicleId: activeVehicles.some(item => item.id === route.vehicleId) && !busyVehicles.has(String(route.vehicleId)) ? String(route.vehicleId) : "",
+      driverId: activeDrivers.some(item => item.id === route.driverId) && !busyDrivers.has(String(route.driverId)) ? String(route.driverId) : "",
+      name: route.name, note: route.reason, orderIds: route.orderIds.filter(id => orderById.has(id)),
+    })).filter(lane => lane.orderIds.length);
+    if (!next.length) return notify("Os pedidos desta sugestão já estão em rota. Gere uma nova sugestão.");
+    if (lanes.some(lane => lane.orderIds.length) && !window.confirm("Substituir o quadro atual pela sugestão?")) return;
+    setLanes(next);
+    notify(`Sugestão aplicada: ${next.length} caminhão(ões). Revise e clique em Criar rotas.`);
+  };
+
   const createAll = async () => {
     const ready = lanes.filter(lane => lane.orderIds.length);
     if (!ready.length) return notify("Coloque ao menos um pedido em um caminhão.");
@@ -238,6 +280,27 @@ export default function RouteBoard({ orders, routes, vehicles, drivers, notify, 
       </div>
     </header>
 
+    <section className={`rb-ai ${suggestion?.source === "deepseek" ? "ai" : ""}`}>
+      <div className="rb-ai-head">
+        <div>
+          <h3>✨ Sugestão de rotas {suggestion?.source === "deepseek" ? "com IA (DeepSeek)" : "automática"}</h3>
+          <small>{suggestion ? `Gerada em ${new Date(suggestion.generatedAt * 1000).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · ${suggestion.generatedBy}` : "Todo dia às 10h o sistema atualiza os pedidos do VHSYS e sugere as rotas do dia seguinte."}</small>
+        </div>
+        <div className="rb-ai-actions">
+          {suggestion && suggestion.routes.length > 0 && <button type="button" className="rb-create" onClick={applySuggestion}>Aplicar no quadro</button>}
+          <button type="button" className="rb-primary-ghost" disabled={suggesting} onClick={() => void generateSuggestion()}>{suggesting ? "Buscando no VHSYS e montando…" : suggestion ? "Gerar de novo agora" : "Sincronizar VHSYS e sugerir agora"}</button>
+        </div>
+      </div>
+      {suggestion && <>
+        <p className="rb-ai-summary">{suggestion.summary}</p>
+        {suggestion.routes.length > 0 && <ol className="rb-ai-routes">{suggestion.routes.map(route => <li key={`${route.vehicleId}-${route.driverId}`}><b>{route.name}</b> · {vehicles.find(item => item.id === route.vehicleId)?.plate ?? "caminhão"} · {drivers.find(item => item.id === route.driverId)?.name ?? "motorista"} · {route.orderIds.length} entrega(s){route.reason && <small>{route.reason}</small>}</li>)}</ol>}
+        {suggestion.unassigned.length > 0 && <p className="rb-ai-warn">Ficaram de fora: {suggestion.unassigned.map(item => `${orderById.get(item.orderId)?.number ?? item.orderId} (${item.reason})`).join("; ")}</p>}
+        {suggestion.warnings.length > 0 && <p className="rb-ai-note">Conferência do sistema: {suggestion.warnings.join(" ")}</p>}
+        {(suggestion.sync || (aiConfigured && suggestion.aiError)) && <p className="rb-ai-note">{[suggestion.sync, aiConfigured ? suggestion.aiError : ""].filter(Boolean).join(" · ")}</p>}
+      </>}
+      {!aiConfigured && <p className="rb-ai-note">A chave do DeepSeek ainda não foi configurada (DEEPSEEK_API_KEY). Enquanto isso, a sugestão usa as regras do sistema.</p>}
+    </section>
+
     <div className="rb-columns">
       <section className={`rb-pool ${dragOver === "" ? "drop" : ""}`} {...dropProps("")}>
         <header><div><h3>Pedidos para entregar</h3><small>{unassigned.length} sem caminhão{outsideScope ? ` · ${outsideScope} fora do filtro` : ""}</small></div><button type="button" className="rb-primary-ghost" onClick={autoDistribute} disabled={!unassigned.length}>⚡ Distribuir automaticamente</button></header>
@@ -268,6 +331,7 @@ export default function RouteBoard({ orders, routes, vehicles, drivers, notify, 
               <button type="button" className="rb-icon" aria-label="Remover caminhão do quadro" title="Remover do quadro" onClick={() => removeLane(lane.key)}>✕</button>
             </header>
             <input className="rb-lane-name" value={lane.name} onChange={event => updateLane(lane.key, { name: event.target.value })} placeholder={`Nome da rota (opcional) — ex.: ${stats.cities.slice(0, 2).join(" / ") || "Zona Norte"}`} />
+            {lane.note && <p className="rb-lane-note">✨ {lane.note}</p>}
             <div className={`rb-meter ${over ? "over" : ""}`}><i style={{ width: `${Math.min(stats.occupancy ?? 0, 100)}%` }} /></div>
             <div className="rb-lane-stats"><span><b>{stats.list.length}</b> entrega(s)</span><span><b>{kg(stats.weight)}</b>{stats.vehicle?.capacityKg ? ` de ${kg(stats.vehicle.capacityKg)} (${stats.occupancy}%)` : ""}</span>{stats.vehicle?.capacityM3 ? <span>{stats.missingVolume ? "cubagem pendente" : `${stats.volume.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m³ (${stats.volumeOccupancy}%)`}</span> : null}</div>
             {stats.list.length > 1 && <button type="button" className="rb-link" onClick={() => sortByDistrict(lane.key)}>Ordenar paradas por cidade e bairro</button>}
