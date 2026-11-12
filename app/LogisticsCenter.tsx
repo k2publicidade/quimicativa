@@ -4,16 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import RouteMap from "./RouteMap";
 import RouteDashboard from "./RouteDashboard";
 import RouteOperations from "./RouteOperations";
+import RouteBoard from "./RouteBoard";
 import { syncErp } from "../lib/sync-erp-client";
 import { localDay } from "../lib/operations";
 
-type Order = { id: number; number: string; customerName: string; customerDistrict: string; customerCity: string; customerState: string; deliveryDate: string; status: string; totalCents: number; totalWeightKg: number; totalVolumeM3: number; missingVolumeItems: number };
+type Order = { id: number; number: string; customerName: string; customerDistrict: string; customerCity: string; customerState: string; deliveryDate: string; status: string; totalCents: number; totalWeightKg: number; totalVolumeM3: number; missingVolumeItems: number; itemsSummary?: string };
 type Vehicle = { id: number; plate: string; model: string; capacityKg: number | null; capacityM3: number | null; status: string };
 type Driver = { id: number; name: string; licenseCategory: string; licenseExpiry: string; moppExpiry: string; status: string; alerts: string[] };
 type RouteEvent = { id: number; stopId: number | null; eventType: string; occurredAt: number; odometerKm: number | null; fuelLiters: number | null; notes: string };
 type RouteStop = { id: number; orderId: number; orderNumber: string; customerName: string; sequence: number; address: string; weightKg: number; volumeM3: number; packageSummary: string; receivingWindow: string; paymentTerms: string; serviceMinutes: number | null; status: string };
 type Route = {
-  id: number; code: string; name: string; plate: string; originAddress: string; driverName: string;
+  id: number; code: string; name: string; vehicleId?: number; plate: string; originAddress: string; driverName: string; driverId?: number | null; driverPhone?: string; updatedAt?: number;
   routeDate: string; status: string; loadedKg: number; capacityKg: number | null;
   remainingCapacityKg: number | null; canAddDeliveries: boolean | null; occupancy: number | null;
   capacityM3: number | null; loadedM3: number; remainingCapacityM3: number | null; volumeOccupancy: number | null; volumeDataComplete: boolean;
@@ -41,7 +42,7 @@ const routeUtilization = (route: Pick<Route, "occupancy" | "volumeOccupancy" | "
 const ROUTE_DRAFT_KEY = "quimicativa:route-draft";
 
 export default function LogisticsCenter({ notify, canWrite, canSync = false, initialOrderId = null, initialRouteDate = "", onInitialOrderConsumed, onEditOrder, onManageDrivers }: { notify: (message: string) => void; canWrite: boolean; canSync?: boolean; initialOrderId?: number | null; initialRouteDate?: string; onInitialOrderConsumed?: () => void; onEditOrder?: (orderId: number | null) => void; onManageDrivers?: () => void }) {
-  const [activeView, setActiveView] = useState<"dashboard" | "planning">(initialOrderId ? "planning" : "dashboard");
+  const [activeView, setActiveView] = useState<"dashboard" | "board" | "planning">(initialOrderId ? "planning" : "dashboard");
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState("");
   const [integration, setIntegration] = useState<{ active: boolean; lastSyncAt: number | null } | null>(null);
@@ -241,10 +242,10 @@ export default function LogisticsCenter({ notify, canWrite, canSync = false, ini
   };
 
   return <div className="logistics-center">
-    <header className="rd-hero"><div><span>OPERAÇÃO LOGÍSTICA</span><h1>Roteiros de entrega</h1><p>Controle a carga, acompanhe os pedidos e organize as saídas da frota.</p></div><div className="rd-hero-actions">{integration?.lastSyncAt && <small>vhsys sincronizada em {new Date(integration.lastSyncAt * 1000).toLocaleString("pt-BR")}</small>}{canSync && <button type="button" className="rd-sync" disabled={syncing || !integration?.active} onClick={syncOrders}>{syncing ? "Sincronizando..." : "Sincronizar vhsys"}</button>}{canWrite && <button type="button" className="rd-create" onClick={() => setActiveView("planning")}>+ Montar rota</button>}</div></header>
+    <header className="rd-hero"><div><span>OPERAÇÃO LOGÍSTICA</span><h1>Roteiros de entrega</h1><p>Controle a carga, acompanhe os pedidos e organize as saídas da frota.</p></div><div className="rd-hero-actions">{integration?.lastSyncAt && <small>vhsys sincronizada em {new Date(integration.lastSyncAt * 1000).toLocaleString("pt-BR")}</small>}{canSync && <button type="button" className="rd-sync" disabled={syncing || !integration?.active} onClick={syncOrders}>{syncing ? "Sincronizando..." : "Sincronizar vhsys"}</button>}{canWrite && <button type="button" className="rd-create" onClick={() => setActiveView("board")}>+ Montar rotas do dia</button>}</div></header>
     {syncProgress && <div className="rd-sync-progress" role="status">{syncProgress}</div>}
-    <nav className="rd-main-tabs" aria-label="Visões da logística"><button type="button" className={activeView === "dashboard" ? "active" : ""} onClick={() => setActiveView("dashboard")}>Visão geral</button><button type="button" className={activeView === "planning" ? "active" : ""} onClick={() => setActiveView("planning")}>Planejamento e monitoramento</button></nav>
-    {activeView === "dashboard" ? <RouteDashboard routes={routes} orders={orders} onPlan={() => setActiveView("planning")} onOpenRoute={id => { setSelected(id); setActiveView("planning"); }} /> : <>
+    <nav className="rd-main-tabs" aria-label="Visões da logística"><button type="button" className={activeView === "dashboard" ? "active" : ""} onClick={() => setActiveView("dashboard")}>Visão geral</button>{canWrite && <button type="button" className={activeView === "board" ? "active" : ""} onClick={() => setActiveView("board")}>Montar rotas do dia</button>}<button type="button" className={activeView === "planning" ? "active" : ""} onClick={() => setActiveView("planning")}>Planejamento e monitoramento</button></nav>
+    {activeView === "board" && canWrite ? <RouteBoard orders={activeOrders} routes={routes} vehicles={vehicles} drivers={drivers} notify={notify} reload={load} onOpenRoute={id => { setSelected(id); setActiveView("planning"); }} /> : activeView === "dashboard" ? <RouteDashboard routes={routes} orders={orders} onPlan={() => setActiveView("planning")} onOpenRoute={id => { setSelected(id); setActiveView("planning"); }} /> : <>
     <section className="operation-flow logistics-flow" aria-label="Fluxo operacional">
       <button type="button" className="done flow-step-button" onClick={() => onEditOrder?.(orderIds.length === 1 ? orderIds[0] : null)} disabled={!onEditOrder}><b>✓</b><span><strong>Pedido montado</strong><small>{orderIds.length === 1 ? "Revisar e editar dados comerciais e carga" : "Voltar aos pedidos"}</small></span><em>Editar</em></button><i>→</i>
       <div className="active"><b>2</b><span><strong>Montar rota</strong><small>Escalar caminhão e motorista</small></span></div><i>→</i>

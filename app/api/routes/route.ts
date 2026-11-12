@@ -20,7 +20,7 @@ async function details(db: D1Database, row: RouteRow) {
     db.prepare("SELECT id,stop_id,event_type,occurred_at,odometer_km,fuel_liters,notes FROM route_events WHERE route_id=? ORDER BY occurred_at,id").bind(row.id).all<{ id: number; stop_id: number | null; event_type: string; occurred_at: number; odometer_km: number | null; fuel_liters: number | null; notes: string | null }>(),
     db.prepare("SELECT oi.product_name,oi.quantity,oi.unit,oi.package_count,oi.package_type,oi.package_unit_weight_kg,oi.weight_kg,oi.volume_m3,COALESCE(p.un_number,'') AS un_number,COALESCE(p.hazard_class,'') AS hazard_class,COALESCE(p.flammable,0) AS flammable,COALESCE(p.controlled,0) AS controlled FROM route_stops s JOIN order_items oi ON oi.order_id=s.order_id LEFT JOIN products p ON p.id=oi.product_id WHERE s.route_id=?").bind(row.id).all<LoadItem>(),
     db.prepare("SELECT COALESCE(SUM(gross_profit_cents),0) AS actual_profit_cents,COALESCE(SUM(delivery_cost_cents),0) AS actual_cost_cents,COUNT(*) AS profit_rows FROM profitability_entries WHERE route_id=?").bind(row.id).first<{ actual_profit_cents: number; actual_cost_cents: number; profit_rows: number }>(),
-    row.driver_id ? db.prepare("SELECT license_expiry,mopp_expiry FROM drivers WHERE id=?").bind(row.driver_id).first<{ license_expiry: number | null; mopp_expiry: number | null }>() : Promise.resolve(null),
+    row.driver_id ? db.prepare("SELECT license_expiry,mopp_expiry,phone FROM drivers WHERE id=?").bind(row.driver_id).first<{ license_expiry: number | null; mopp_expiry: number | null; phone: string | null }>() : Promise.resolve(null),
   ]);
   const weight = stops.results.reduce((sum, stop) => sum + Number(stop.weight_kg || 0), 0);
   const loadedM3 = stops.results.reduce((sum, stop) => sum + Number(stop.volume_m3 || 0), 0);
@@ -56,7 +56,7 @@ async function details(db: D1Database, row: RouteRow) {
     hazardousLoad && !hasValidMopp ? "Comprovante MOPP válido não localizado no cadastro documental associado a esta operação; confirme a habilitação do motorista." : "",
   ].filter(Boolean);
   const fuelLiters = events.results.reduce((sum, event) => sum + Number(event.fuel_liters ?? 0), 0) || null;
-  return { id: row.id, code: row.code, name: row.name, vehicleId: row.vehicle_id, plate: row.plate ?? "", model: row.model ?? "", driverName: row.driver_name, routeDate: date(row.route_date), status: row.status, plannedKm: row.planned_km, estimatedCostCents: row.estimated_cost_cents, actualCostCents, costSource: hasActualProfit ? "imported" : "estimated", revenueCents, estimatedProfitCents, actualProfitCents, profitSource: hasActualProfit ? "imported" : "estimated", capacityKg: row.capacity_kg ?? null, loadedKg: weight, occupancy: row.capacity_kg ? Math.round(weight / row.capacity_kg * 100) : null, remainingCapacityKg: row.capacity_kg ? Math.max(0, row.capacity_kg - weight) : null, capacityM3: row.capacity_m3 ?? null, loadedM3, volumeDataComplete, volumeOccupancy: row.capacity_m3 && volumeDataComplete ? Math.round(loadedM3 / row.capacity_m3 * 100) : null, remainingCapacityM3: row.capacity_m3 && volumeDataComplete ? Math.max(0, row.capacity_m3 - loadedM3) : null, canAddDeliveries: !row.capacity_kg && !row.capacity_m3 ? null : (row.capacity_kg ? weight < row.capacity_kg : true) && (row.capacity_m3 ? volumeDataComplete && loadedM3 < row.capacity_m3 : true), loadSummary: [...packages.values()].sort((a, b) => a.packageType.localeCompare(b.packageType, "pt-BR")), productSummary, hazardousLoad, hasValidMopp, safetyNotices, measuredKm, fuelLiters, fuelEfficiencyKmL: measuredKm && measuredKm > 0 && fuelLiters ? measuredKm / fuelLiters : null, durationHours, drivingHours, stoppedMinutes, completedDeliveries, deliveriesPerHour: durationHours && durationHours > 0 ? completedDeliveries / durationHours : null, averageServiceMinutes, costPerDeliveryCents: completedDeliveries ? Math.round(operationalCostCents / completedDeliveries) : null, costPerKmCents: measuredKm && measuredKm > 0 ? Math.round(operationalCostCents / measuredKm) : null, profitPerKmCents: measuredKm && measuredKm > 0 ? Math.round(operationalProfitCents / measuredKm) : null, events: events.results.map(event => ({ id: event.id, stopId: event.stop_id, eventType: event.event_type, occurredAt: event.occurred_at, odometerKm: event.odometer_km, fuelLiters: event.fuel_liters, notes: event.notes ?? "" })), stops: stops.results.map(s => ({ id: s.id, orderId: s.order_id, orderNumber: s.order_number, customerName: s.customer_name, sequence: s.sequence, status: s.status, address: s.address_snapshot, weightKg: s.weight_kg, volumeM3: s.volume_m3, packageSummary: s.package_summary, receivingWindow: s.receiving_window ?? "", paymentTerms: s.payment_terms ?? "", serviceMinutes: serviceMinutes.get(s.id) ?? null, deliveredAt: s.delivered_at, notes: s.notes ?? "" })) };
+  return { id: row.id, code: row.code, name: row.name, vehicleId: row.vehicle_id, plate: row.plate ?? "", model: row.model ?? "", driverName: row.driver_name, driverId: row.driver_id, driverPhone: driverDocument?.phone ?? "", updatedAt: row.updated_at, routeDate: date(row.route_date), status: row.status, plannedKm: row.planned_km, estimatedCostCents: row.estimated_cost_cents, actualCostCents, costSource: hasActualProfit ? "imported" : "estimated", revenueCents, estimatedProfitCents, actualProfitCents, profitSource: hasActualProfit ? "imported" : "estimated", capacityKg: row.capacity_kg ?? null, loadedKg: weight, occupancy: row.capacity_kg ? Math.round(weight / row.capacity_kg * 100) : null, remainingCapacityKg: row.capacity_kg ? Math.max(0, row.capacity_kg - weight) : null, capacityM3: row.capacity_m3 ?? null, loadedM3, volumeDataComplete, volumeOccupancy: row.capacity_m3 && volumeDataComplete ? Math.round(loadedM3 / row.capacity_m3 * 100) : null, remainingCapacityM3: row.capacity_m3 && volumeDataComplete ? Math.max(0, row.capacity_m3 - loadedM3) : null, canAddDeliveries: !row.capacity_kg && !row.capacity_m3 ? null : (row.capacity_kg ? weight < row.capacity_kg : true) && (row.capacity_m3 ? volumeDataComplete && loadedM3 < row.capacity_m3 : true), loadSummary: [...packages.values()].sort((a, b) => a.packageType.localeCompare(b.packageType, "pt-BR")), productSummary, hazardousLoad, hasValidMopp, safetyNotices, measuredKm, fuelLiters, fuelEfficiencyKmL: measuredKm && measuredKm > 0 && fuelLiters ? measuredKm / fuelLiters : null, durationHours, drivingHours, stoppedMinutes, completedDeliveries, deliveriesPerHour: durationHours && durationHours > 0 ? completedDeliveries / durationHours : null, averageServiceMinutes, costPerDeliveryCents: completedDeliveries ? Math.round(operationalCostCents / completedDeliveries) : null, costPerKmCents: measuredKm && measuredKm > 0 ? Math.round(operationalCostCents / measuredKm) : null, profitPerKmCents: measuredKm && measuredKm > 0 ? Math.round(operationalProfitCents / measuredKm) : null, events: events.results.map(event => ({ id: event.id, stopId: event.stop_id, eventType: event.event_type, occurredAt: event.occurred_at, odometerKm: event.odometer_km, fuelLiters: event.fuel_liters, notes: event.notes ?? "" })), stops: stops.results.map(s => ({ id: s.id, orderId: s.order_id, orderNumber: s.order_number, customerName: s.customer_name, sequence: s.sequence, status: s.status, address: s.address_snapshot, weightKg: s.weight_kg, volumeM3: s.volume_m3, packageSummary: s.package_summary, receivingWindow: s.receiving_window ?? "", paymentTerms: s.payment_terms ?? "", serviceMinutes: serviceMinutes.get(s.id) ?? null, deliveredAt: s.delivered_at, notes: s.notes ?? "" })) };
 }
 
 export async function GET(request: NextRequest) {
@@ -67,7 +67,12 @@ export async function GET(request: NextRequest) {
     if (!row) return NextResponse.json({ error: "Rota não encontrada" }, { status: 404 });
     return NextResponse.json({ route: { ...(await details(db, row)), originAddress: row.origin_address ?? "" } });
   }
-  const rows = await db.prepare(`SELECT r.*,v.plate,v.model,v.capacity_kg,v.capacity_m3 FROM routes r JOIN vehicles v ON v.id=r.vehicle_id ORDER BY r.route_date DESC,r.id DESC`).all<RouteRow>();
+  const day = request.nextUrl.searchParams.get("date");
+  if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return NextResponse.json({ error: "Data inválida" }, { status: 400 });
+  const dayStart = day ? Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000) : 0;
+  const rows = day
+    ? await db.prepare(`SELECT r.*,v.plate,v.model,v.capacity_kg,v.capacity_m3 FROM routes r JOIN vehicles v ON v.id=r.vehicle_id WHERE r.route_date>=? AND r.route_date<? ORDER BY r.id`).bind(dayStart, dayStart + 86400).all<RouteRow>()
+    : await db.prepare(`SELECT r.*,v.plate,v.model,v.capacity_kg,v.capacity_m3 FROM routes r JOIN vehicles v ON v.id=r.vehicle_id ORDER BY r.route_date DESC,r.id DESC`).all<RouteRow>();
   const routes = await Promise.all(rows.results.map(async row => ({ ...(await details(db, row)), originAddress: row.origin_address ?? "" })));
   return NextResponse.json({ routes });
 }
@@ -130,7 +135,7 @@ export async function POST(request: NextRequest) {
     END $allocation$`).bind(driverId, vehicleId, dayStart, dayEnd, ...orderIds),
     db.prepare(`INSERT INTO routes (code,name,vehicle_id,driver_id,driver_name,route_date,origin_address,status,planned_km,estimated_cost_cents,notes,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(code, String(body.name || `Rota ${vehicle.plate}`), vehicleId, driver.id, driver.name, routeDate, String(body.originAddress || ""), "draft", Number(body.plannedKm || 0), Number(body.estimatedCostCents || 0), String(body.notes || ""), actor.userId, timestamp, timestamp),
   ];
-  orderedStops.forEach((item, index) => statements.push(db.prepare(`INSERT INTO route_stops (route_id,order_id,sequence,status,address_snapshot,weight_kg,volume_m3,package_summary,receiving_window,created_at,updated_at) SELECT id,?,?,?,?,?,?,?,?,?,? FROM routes WHERE code=?`).bind(Number(item.order.id), index + 1, "pending", address(item.order), item.weight, item.volumeM3, item.packages, String(item.order.receiving_window || ""), timestamp, timestamp, code)));
+  orderedStops.forEach((item, index) => statements.push(db.prepare(`INSERT INTO route_stops (route_id,order_id,sequence,status,address_snapshot,weight_kg,volume_m3,package_summary,receiving_window,created_at,updated_at) SELECT id,?,?,?,?,?,?,?,?,?,? FROM routes WHERE code=?`).bind(Number(item.order.id), index + 1, "pending", address({ ...item.order, number: item.order.address_number }), item.weight, item.volumeM3, item.packages, String(item.order.receiving_window || ""), timestamp, timestamp, code)));
   try { await db.batch(statements); } catch (error) { if (error instanceof Error && error.message.includes("OPS_ALLOCATION")) return NextResponse.json({ error: "Caminhão, motorista ou pedido acabou de ser alocado em outra rota. Atualize a tela." }, { status: 409 }); throw error; }
   const route = await db.prepare("SELECT * FROM routes WHERE code=?").bind(code).first<RouteRow>();
   if (!route) return NextResponse.json({ error: "Não foi possível confirmar a rota." }, { status: 500 });
@@ -164,6 +169,93 @@ export async function PUT(request: NextRequest) {
     db.prepare("INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'update','route',?,?,?)").bind(actor.userId, String(id), changeNotes, timestamp),
   ];
   try { await db.batch(mutations); } catch (error) { if (error instanceof Error && error.message.includes("OPS_CONFLICT")) return NextResponse.json({ error: "A rota foi alterada por outra pessoa. Atualize a tela." }, { status: 409 }); throw error; }
+  const row = await db.prepare(`SELECT r.*,v.plate,v.model,v.capacity_kg,v.capacity_m3 FROM routes r JOIN vehicles v ON v.id=r.vehicle_id WHERE r.id=?`).bind(id).first<RouteRow>();
+  return NextResponse.json({ route: { ...(await details(db, row!)), originAddress: row?.origin_address ?? "" } });
+}
+
+const idList = (value: unknown) => Array.isArray(value) ? value.map(Number) : [];
+
+/**
+ * Inclui ou retira pedidos de uma rota ainda planejada (antes da saída).
+ * Mantém a ordem das paradas existentes e acrescenta os novos pedidos ao final.
+ */
+export async function PATCH(request: NextRequest) {
+  const actor = await getActor();
+  if (!actor) return NextResponse.json({ error: "Acesso não autorizado" }, { status: 401 });
+  if (!canWrite(actor)) return NextResponse.json({ error: "Seu perfil possui acesso somente para consulta" }, { status: 403 });
+  const body = await request.json() as Record<string, unknown>, id = Number(body.id), db = getD1();
+  const addIds = idList(body.addOrderIds), removeIds = idList(body.removeOrderIds);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Rota inválida" }, { status: 400 });
+  if (!addIds.length && !removeIds.length) return NextResponse.json({ error: "Informe os pedidos a incluir ou retirar." }, { status: 400 });
+  if ([...addIds, ...removeIds].some(value => !Number.isSafeInteger(value) || value <= 0) || new Set([...addIds, ...removeIds]).size !== addIds.length + removeIds.length) return NextResponse.json({ error: "Selecione pedidos válidos, sem repetições." }, { status: 400 });
+  const current = await db.prepare(`SELECT r.*,v.plate,v.model,v.capacity_kg,v.capacity_m3 FROM routes r JOIN vehicles v ON v.id=r.vehicle_id WHERE r.id=?`).bind(id).first<RouteRow>();
+  if (!current) return NextResponse.json({ error: "Rota não encontrada" }, { status: 404 });
+  if (current.status !== "draft") return NextResponse.json({ error: "Só é possível incluir ou retirar pedidos antes da saída da rota." }, { status: 409 });
+  const stops = await db.prepare("SELECT id,order_id,weight_kg,volume_m3 FROM route_stops WHERE route_id=? ORDER BY sequence").bind(id).all<{ id: number; order_id: number; weight_kg: number; volume_m3: number }>();
+  const inRoute = new Set(stops.results.map(stop => stop.order_id));
+  if (removeIds.some(orderId => !inRoute.has(orderId))) return NextResponse.json({ error: "Um dos pedidos a retirar não pertence a esta rota." }, { status: 400 });
+  if (addIds.some(orderId => inRoute.has(orderId))) return NextResponse.json({ error: "O pedido já está nesta rota." }, { status: 409 });
+  const remaining = stops.results.filter(stop => !removeIds.includes(stop.order_id));
+  if (!remaining.length && !addIds.length) return NextResponse.json({ error: "A rota precisa de ao menos um pedido. Cancele a rota se não houver mais entregas." }, { status: 400 });
+  const removedStopIds = stops.results.filter(stop => removeIds.includes(stop.order_id)).map(stop => stop.id);
+  if (removedStopIds.length) {
+    const used = await db.prepare(`SELECT COUNT(*) AS n FROM route_events WHERE stop_id IN (${removedStopIds.map(() => "?").join(",")})`).bind(...removedStopIds).first<{ n: number }>();
+    if (Number(used?.n ?? 0) > 0) return NextResponse.json({ error: "Há eventos registrados para este pedido na rota; ele não pode ser retirado." }, { status: 409 });
+  }
+  type NewStop = { orderId: number; address: string; weight: number; volumeM3: number; packages: string; receivingWindow: string; number: string };
+  const newStops: NewStop[] = [];
+  if (addIds.length) {
+    const placeholders = addIds.map(() => "?").join(",");
+    const orders = await db.prepare(`SELECT o.id,o.number,o.status,c.company_name,c.street,c.number AS address_number,c.complement,c.district,c.city,c.state,c.zip_code,c.receiving_window FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.id IN (${placeholders}) AND o.status NOT IN ('cancelled','delivered','completed')`).bind(...addIds).all<Record<string, unknown>>();
+    if (orders.results.length !== addIds.length) return NextResponse.json({ error: "Um ou mais pedidos não foram encontrados, estão cancelados ou já foram entregues." }, { status: 400 });
+    const assigned = await db.prepare(`SELECT s.order_id,r.name FROM route_stops s JOIN routes r ON r.id=s.route_id WHERE s.order_id IN (${placeholders}) AND r.status IN ('draft','active')`).bind(...addIds).all<{ order_id: number; name: string }>();
+    if (assigned.results.length) return NextResponse.json({ error: `Pedido já alocado na rota ${assigned.results[0].name}. Retire-o de lá primeiro.` }, { status: 409 });
+    const items = await db.prepare(`SELECT oi.order_id,oi.quantity,oi.unit,oi.product_name,oi.package_count,oi.package_type,oi.package_unit_weight_kg,oi.weight_kg,oi.volume_m3,COALESCE(p.un_number,'') AS un_number,COALESCE(p.hazard_class,'') AS hazard_class,COALESCE(p.flammable,0) AS flammable,COALESCE(p.controlled,0) AS controlled FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id WHERE oi.order_id IN (${placeholders}) ORDER BY oi.id`).bind(...addIds).all<{ order_id: number; quantity: number; unit: string; product_name: string; package_count: number; package_type: string; package_unit_weight_kg: number; weight_kg: number; volume_m3: number; un_number: string; hazard_class: string; flammable: number; controlled: number }>();
+    if (items.results.some(item => item.un_number || item.hazard_class || item.flammable || item.controlled)) {
+      const driver = current.driver_id ? await db.prepare("SELECT mopp_expiry FROM drivers WHERE id=?").bind(current.driver_id).first<{ mopp_expiry: number | null }>() : null;
+      if (!driver?.mopp_expiry || driver.mopp_expiry < current.route_date) return NextResponse.json({ error: "O pedido contém produto perigoso e o motorista desta rota não possui MOPP válido na data." }, { status: 409 });
+    }
+    if (current.capacity_m3 && items.results.some(item => Number(item.volume_m3) <= 0)) return NextResponse.json({ error: "Cubagem incompleta: informe o volume de todos os itens antes de incluir o pedido neste caminhão." }, { status: 409 });
+    const byOrder = new Map<number, typeof items.results>();
+    items.results.forEach(item => byOrder.set(item.order_id, [...(byOrder.get(item.order_id) ?? []), item]));
+    const byId = new Map(orders.results.map(order => [Number(order.id), order]));
+    addIds.forEach(orderId => {
+      const order = byId.get(orderId)!, orderItems = byOrder.get(orderId) ?? [];
+      newStops.push({
+        orderId, number: String(order.number ?? orderId),
+        address: address({ ...order, number: order.address_number }),
+        weight: orderItems.reduce((sum, item) => sum + Number(item.weight_kg || (item.package_count && item.package_unit_weight_kg ? item.package_count * item.package_unit_weight_kg : /kg|quilo/i.test(item.unit) ? item.quantity : 0)), 0),
+        volumeM3: orderItems.reduce((sum, item) => sum + Number(item.volume_m3 || 0), 0),
+        packages: orderItems.map(item => item.package_count && item.package_type ? `${item.package_count} ${item.package_type}${item.package_unit_weight_kg ? ` de ${item.package_unit_weight_kg} kg` : ""} · ${item.product_name}` : `${item.quantity} ${item.unit} · ${item.product_name}`).join("; "),
+        receivingWindow: String(order.receiving_window || ""),
+      });
+    });
+  }
+  const loaded = remaining.reduce((sum, stop) => sum + Number(stop.weight_kg || 0), 0) + newStops.reduce((sum, stop) => sum + stop.weight, 0);
+  const loadedM3 = remaining.reduce((sum, stop) => sum + Number(stop.volume_m3 || 0), 0) + newStops.reduce((sum, stop) => sum + stop.volumeM3, 0);
+  if (current.capacity_kg && loaded > current.capacity_kg) return NextResponse.json({ error: `Capacidade excedida: ${loaded.toLocaleString("pt-BR")} kg em um caminhão de ${current.capacity_kg.toLocaleString("pt-BR")} kg.` }, { status: 409 });
+  if (current.capacity_m3 && loadedM3 > current.capacity_m3) return NextResponse.json({ error: `Cubagem excedida: ${loadedM3.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³ em um caminhão de ${current.capacity_m3.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} m³.` }, { status: 409 });
+  const timestamp = now();
+  const notes = `Pedidos da rota alterados no planejamento\nAutor: ${actor.displayName}${newStops.length ? `\nIncluídos: ${newStops.map(stop => stop.number).join(", ")}` : ""}${removeIds.length ? `\nRetirados: ${removeIds.join(", ")}` : ""}\nAntes: pedidos ${stops.results.map(stop => stop.order_id).join(" → ")}\nDepois: pedidos ${[...remaining.map(stop => stop.order_id), ...newStops.map(stop => stop.orderId)].join(" → ")}`;
+  const statements: D1PreparedStatement[] = [
+    db.prepare("SELECT pg_advisory_xact_lock(1801020)"),
+    db.prepare(`DO $route_members$ DECLARE version bigint; BEGIN
+      SELECT updated_at INTO version FROM routes WHERE id=? AND status='draft' FOR UPDATE;
+      IF version IS DISTINCT FROM ? THEN RAISE EXCEPTION 'OPS_CONFLICT'; END IF;
+      ${addIds.length ? `IF EXISTS (SELECT 1 FROM route_stops s JOIN routes r ON r.id=s.route_id WHERE s.order_id IN (${addIds.map(() => "?").join(",")}) AND r.status IN ('draft','active')) THEN RAISE EXCEPTION 'OPS_ALLOCATION'; END IF;` : ""}
+    END $route_members$`).bind(id, current.updated_at, ...addIds),
+    ...(removedStopIds.length ? [db.prepare(`DELETE FROM route_stops WHERE route_id=? AND id IN (${removedStopIds.map(() => "?").join(",")})`).bind(id, ...removedStopIds)] : []),
+    ...remaining.map((stop, index) => db.prepare("UPDATE route_stops SET sequence=?,updated_at=? WHERE id=?").bind(index + 1, timestamp, stop.id)),
+    ...newStops.map((stop, index) => db.prepare("INSERT INTO route_stops (route_id,order_id,sequence,status,address_snapshot,weight_kg,volume_m3,package_summary,receiving_window,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)").bind(id, stop.orderId, remaining.length + index + 1, "pending", stop.address, stop.weight, stop.volumeM3, stop.packages, stop.receivingWindow, timestamp, timestamp)),
+    db.prepare("UPDATE routes SET updated_at=? WHERE id=?").bind(Math.max(timestamp, current.updated_at + 1), id),
+    db.prepare("INSERT INTO route_events (route_id,event_type,occurred_at,notes,created_by,created_at) VALUES (?,'route_changed',?,?,?,?)").bind(id, timestamp, notes, actor.userId, timestamp),
+    db.prepare("INSERT INTO audit_log (actor_id,action,entity_type,entity_id,details,created_at) VALUES (?,'update','route',?,?,?)").bind(actor.userId, String(id), notes, timestamp),
+  ];
+  try { await db.batch(statements); } catch (error) {
+    if (error instanceof Error && error.message.includes("OPS_CONFLICT")) return NextResponse.json({ error: "A rota foi alterada por outra pessoa. Atualize a tela." }, { status: 409 });
+    if (error instanceof Error && error.message.includes("OPS_ALLOCATION")) return NextResponse.json({ error: "O pedido acabou de ser alocado em outra rota. Atualize a tela." }, { status: 409 });
+    throw error;
+  }
   const row = await db.prepare(`SELECT r.*,v.plate,v.model,v.capacity_kg,v.capacity_m3 FROM routes r JOIN vehicles v ON v.id=r.vehicle_id WHERE r.id=?`).bind(id).first<RouteRow>();
   return NextResponse.json({ route: { ...(await details(db, row!)), originAddress: row?.origin_address ?? "" } });
 }

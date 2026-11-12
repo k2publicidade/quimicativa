@@ -12,6 +12,30 @@ Funcionários em serviço é acessível separadamente aos operadores, com jornad
 
 O estoque distingue modelos de bomba e tamanhos de mangote. Cadastre os materiais, registre uma contagem inicial e depois entradas, saídas e ajustes com motivo. Saldo insuficiente e gravação desatualizada são rejeitados. O histórico guarda saldo anterior, posterior e responsável. Preparar um pedido não movimenta estoque automaticamente: entradas e saídas físicas devem ser registradas.
 
+## Montar rotas do dia (administrador) e expedição (galpão)
+
+**Logística → Montar rotas do dia** monta todas as rotas de uma data em uma tela:
+
+1. Escolha o dia (Hoje/Amanhã) e quais pedidos exibir: só do dia, do dia + atrasados/sem data, ou todos os pendentes.
+2. Clique em **Distribuir automaticamente**: os pedidos são agrupados por cidade e distribuídos nos caminhões e motoristas livres na data, sem passar da capacidade de peso. Também é possível arrastar o pedido até o caminhão ou usar "Enviar para…" (no celular), reordenar as paradas (↑/↓) ou "Ordenar paradas por cidade e bairro".
+3. Clique em **Criar rotas do dia**. Cada caminhão vira uma rota planejada, com as mesmas validações de CNH, MOPP, férias, capacidade e alocação única. O quadro fica salvo no navegador até as rotas serem criadas.
+
+Rotas já criadas para o dia aparecem abaixo do quadro. Enquanto estiverem planejadas (antes da saída), é possível arrastar um pedido para incluí-lo ou **Retirar** um pedido; a alteração fica no histórico da rota.
+
+**Galpão e estoque → Rotas do dia** é a tela da equipe física: mostra cada rota por motorista, com carga, bombonas, equipamentos e situação da separação. **Imprimir todas as rotas** gera um PDF único com uma capa (uma linha por rota, para entregar a cada motorista) e o romaneio de cada rota, que agora começa por uma **lista de carregamento** com caixas de conferência por produto e embalagem e os totais de bombonas, tampas, lacres, IBCs, bombas, mangotes etc. **Enviar ao motorista (WhatsApp)** abre o WhatsApp com o roteiro (paradas em ordem, endereço, carga e bombonas); usa o telefone do cadastro do motorista quando existir. **Copiar roteiro** copia o mesmo texto.
+
+### Sugestão automática das 10h (VHSYS + DeepSeek)
+
+Todo dia às 10h (Brasília) a rotina `/api/cron/route-suggestions` atualiza os pedidos mais recentes do VHSYS e grava uma sugestão de rotas para o próximo dia de entrega (domingo é pulado: no sábado a sugestão é para segunda). A sugestão aparece no topo de **Montar rotas do dia**, com o motivo de cada agrupamento; **Aplicar no quadro** preenche os caminhões para revisão e **Gerar de novo agora** refaz a sugestão para a data escolhida (gestores também sincronizam o VHSYS nesse momento).
+
+- Entram os pedidos com entrega na data e os atrasados da última semana que ainda não estão em rota.
+- O DeepSeek recebe somente o necessário: nome do cliente, bairro, cidade, peso, volume, embalagens, janela de recebimento, se é produto perigoso e se está atrasado; dos caminhões, modelo e capacidade; dos motoristas, só um código e se têm MOPP. Não são enviados CNPJ, valores, contatos nem nomes de motoristas.
+- A IA só sugere. O sistema confere a resposta (caminhão e motorista livres e usados uma vez, cada pedido uma vez, capacidade de peso e volume, MOPP) e encaixa pelas regras automáticas o que ela deixar de fora. Sem chave configurada ou se o DeepSeek falhar, a sugestão é feita pelas regras do sistema. Nada é criado sem o administrador clicar em **Criar rotas do dia**.
+
+Variáveis de ambiente na Vercel: `DEEPSEEK_API_KEY` (obrigatória para usar a IA), `CRON_SECRET` (obrigatória para a rotina das 10h; a Vercel envia automaticamente no agendamento), `DEEPSEEK_MODEL` (opcional, padrão `deepseek-chat`). O agendamento está em `vercel.json` (`0 13 * * *`, 13h UTC). No plano Hobby da Vercel o horário pode variar dentro da hora.
+
+API: `GET /api/routes?date=AAAA-MM-DD`, `PATCH /api/routes` (`addOrderIds`/`removeOrderIds`, só rotas planejadas) e `GET /api/routes/manifest?date=AAAA-MM-DD` ou `?ids=1,2`, `GET`/`POST /api/routes/suggest` (`{ date, sync }`).
+
 ## Jornada, entregas e canhotos
 
 1. Monte a rota em Logística com veículo, motorista, data, origem e pedidos.

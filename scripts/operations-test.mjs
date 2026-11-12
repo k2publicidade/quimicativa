@@ -13,7 +13,7 @@ const shims = {
   admin: `export const supabaseAdmin = () => ({ rpc: globalThis.__opsRpc });`,
   storage: `export const getFiles = () => ({ put: async (key, bytes) => globalThis.__opsFiles.set(key, bytes), get: async key => { const bytes = globalThis.__opsFiles.get(key); return bytes ? { body: bytes, arrayBuffer: async () => bytes } : null; }, delete: async key => globalThis.__opsFiles.delete(key) });`,
 };
-const endpoints = ["operations", "route-events", "routes", "routes/manifest", "orders", "vehicles", "drivers", "vehicle-maintenance", "fleet-schedule", "order-docs", "records", "crm-insights"];
+const endpoints = ["operations", "route-events", "routes", "routes/manifest", "routes/suggest", "cron/route-suggestions", "orders", "vehicles", "drivers", "vehicle-maintenance", "fleet-schedule", "order-docs", "records", "crm-insights"];
 await build({ entryPoints: Object.fromEntries([...endpoints.map(name => [name, `app/api/${name}/route.ts`]), ["domain", "lib/operations.ts"]]), bundle: true, format: "esm", platform: "node", packages: "external", outdir: out, outExtension: { ".js": ".mjs" }, plugins: [{ name: "local-test-adapters", setup(builder) {
   builder.onResolve({ filter: /^(next\/server)$|authz$|supabase\/(admin|storage)$/ }, args => ({ path: args.path === "next/server" ? args.path : args.path.endsWith("authz") ? "authz" : args.path.endsWith("admin") ? "admin" : "storage", namespace: "ops-test" }));
   builder.onLoad({ filter: /.*/, namespace: "ops-test" }, args => ({ contents: shims[args.path], loader: "js" }));
@@ -131,6 +131,18 @@ try {
   assert.equal(route.stops[0].orderId, 2); assert.equal(route.events.filter(row => row.eventType === "route_changed").length, 1);
   pass("Preparação com bomba/mangote e rotas: carga atômica, alocação única e alteração rastreável");
 
+  await request("routes", { id: route.id, removeOrderIds: [1, 2] }, 400, "PATCH");
+  await request("routes", { id: route.id, addOrderIds: [2] }, 409, "PATCH");
+  route = (await request("routes", { id: route.id, removeOrderIds: [1] }, 200, "PATCH")).route;
+  assert.deepEqual(route.stops.map(row => row.orderId), [2]);
+  route = (await request("routes", { id: route.id, addOrderIds: [1] }, 200, "PATCH")).route;
+  assert.deepEqual(route.stops.map(row => [row.orderId, row.sequence]), [[2, 1], [1, 2]]);
+  assert.equal(route.loadedKg, 20);
+  assert.equal((await request("routes", null, 200, "GET", `?date=${today}`)).routes.length, 1);
+  assert.equal((await request("routes", null, 200, "GET", `?date=${tomorrow}`)).routes.length, 0);
+  await request("routes", null, 400, "GET", "?date=amanha");
+  pass("Inclusão e retirada de pedidos em rota planejada e consulta das rotas por data");
+
   await database.query("UPDATE customers SET city='Rio de Janeiro' WHERE id=1");
   const insightsNow = Math.floor(Date.now() / 1000);
   await database.query("UPDATE orders SET order_date=$1 WHERE id=1", [insightsNow - 90 * 86400]);
@@ -193,6 +205,10 @@ try {
   const manifestResponse = await apis["routes/manifest"].GET({ nextUrl: new URL("http://localhost/api/routes/manifest?id=1") });
   assert.equal(manifestResponse.status, 200); assert.equal(manifestResponse.headers.get("Content-Type"), "application/pdf");
   const manifest = await PDFDocument.load(await manifestResponse.arrayBuffer()); assert.ok(manifest.getPageCount() > 0);
+  const dayManifest = await apis["routes/manifest"].GET({ nextUrl: new URL(`http://localhost/api/routes/manifest?date=${today}`) });
+  assert.equal(dayManifest.status, 200); assert.ok((await PDFDocument.load(await dayManifest.arrayBuffer())).getPageCount() >= 3);
+  assert.equal((await apis["routes/manifest"].GET({ nextUrl: new URL("http://localhost/api/routes/manifest?date=2000-01-01") })).status, 404);
+  assert.equal((await apis["routes/manifest"].GET({ nextUrl: new URL("http://localhost/api/routes/manifest?ids=1,2") })).status, 200);
   pass("Upload privado e vinculação de canhoto assinado após o retorno da rota");
 
   for (const maintType of domain.MAINTENANCE_TYPES) await request("vehicle-maintenance", { vehicleId: 1, maintType, serviceDate: today, odometerKm: 1040, status: "completed", costCents: 0, description: "Serviço realizado" }, 201);
@@ -204,6 +220,39 @@ try {
   await request("vehicle-maintenance", { vehicleId: 1, maintType: "Limpeza geral", serviceDate: tomorrow, odometerKm: 1040, status: "completed", costCents: 0 }, 400);
   pass("Serviços persistidos geram agenda de 5.000 km / 14 dias / 3 meses, sem interferência entre ciclos");
   assert.ok((await database.query("SELECT COUNT(*) AS n FROM audit_log WHERE entity_type='operation'")).rows[0].n >= 10);
+  const noonTomorrow = Math.floor(Date.parse(`${tomorrow}T12:00:00Z`) / 1000);
+  await database.query("INSERT INTO customers (company_name,document,street,number,district,city,state,created_at,updated_at) VALUES ('Lavanderia Sul','sug-1','Rua A','10','Penha','Rio de Janeiro','RJ',1,1),('Hotel Leste','sug-2','Rua B','20','Centro','Niterói','RJ',1,1)");
+  const sugCustomers = (await database.query("SELECT id FROM customers WHERE document LIKE 'sug-%' ORDER BY document")).rows.map(row => row.id);
+  const sugOrders = [];
+  for (const [index, weight] of [300, 300, 100].entries()) {
+    const order = (await database.query("INSERT INTO orders (number,customer_id,status,delivery_date,created_at,updated_at) VALUES ($1,$2,'confirmed',$3,1,1) RETURNING id", [`SUG-${index}`, sugCustomers[index % 2], noonTomorrow])).rows[0].id;
+    await database.query("INSERT INTO order_items (order_id,product_name,quantity,unit,unit_price_cents,package_count,package_type,package_unit_weight_kg,weight_kg,volume_m3,created_at,updated_at) VALUES ($1,'Cloro',$2,'un',100,$2,'Bombona',50,$3,0.1,1,1)", [order, weight / 50, weight]);
+    sugOrders.push(Number(order));
+  }
+  const fitsCapacity = suggestion => suggestion.routes.every(route => route.orderIds.reduce((sum, id) => sum + [300, 300, 100][sugOrders.indexOf(id)], 0) <= 500);
+  delete process.env.DEEPSEEK_API_KEY;
+  let suggestion = (await request("routes/suggest", { date: tomorrow }, 200)).suggestion;
+  assert.equal(suggestion.source, "automatic"); assert.match(suggestion.aiError, /DEEPSEEK_API_KEY/);
+  assert.deepEqual(suggestion.routes.flatMap(route => route.orderIds).sort(), [...sugOrders].sort()); assert.ok(fitsCapacity(suggestion));
+  const realFetch = globalThis.fetch; let aiBody = "";
+  process.env.DEEPSEEK_API_KEY = "test-key";
+  globalThis.fetch = async (url, init) => {
+    assert.match(String(url), /api\.deepseek\.com\/chat\/completions/); aiBody = String(init.body);
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ routes: [{ vehicleId: 1, driverId: 1, orderIds: sugOrders, name: "Rota IA", reason: "Penha primeiro" }, { vehicleId: 1, driverId: 2, orderIds: [sugOrders[0]], name: "Duplicada", reason: "" }], unassigned: [], summary: "Plano da IA" }) } }] });
+  };
+  try { suggestion = (await request("routes/suggest", { date: tomorrow }, 200)).suggestion; } finally { globalThis.fetch = realFetch; delete process.env.DEEPSEEK_API_KEY; }
+  assert.equal(suggestion.source, "deepseek"); assert.equal(suggestion.summary, "Plano da IA");
+  assert.equal(suggestion.routes[0].name, "Rota IA"); assert.ok(fitsCapacity(suggestion));
+  assert.deepEqual(suggestion.routes.flatMap(route => route.orderIds).sort(), [...sugOrders].sort());
+  assert.ok(suggestion.warnings.length >= 2); assert.ok(!/Eucimar|Antonio|sug-1|unit_price/.test(aiBody)); assert.match(aiBody, /Lavanderia Sul/);
+  assert.equal((await request("routes/suggest", null, 200, "GET", `?date=${tomorrow}`)).suggestion.summary, "Plano da IA");
+  await request("routes/suggest", { date: "amanha" }, 400);
+  const cron = async (headers, search = "") => { const req = new Request(`http://localhost/api/cron/route-suggestions${search}`, { headers }); Object.defineProperty(req, "nextUrl", { value: new URL(req.url) }); return apis["cron/route-suggestions"].GET(req); };
+  delete process.env.CRON_SECRET; assert.equal((await cron({})).status, 503);
+  process.env.CRON_SECRET = "segredo"; assert.equal((await cron({ authorization: "Bearer errado" })).status, 401);
+  const cronResponse = await cron({ authorization: "Bearer segredo" }, `?date=${tomorrow}`); const cronData = await cronResponse.json();
+  assert.equal(cronResponse.status, 200, JSON.stringify(cronData)); assert.equal(cronData.orders, 3); assert.match(cronData.sync, /não está ativa/);
+  pass("Sugestão diária de rotas: regras do sistema, IA conferida (capacidade e duplicidade) e rotina das 10h protegida");
   console.log(`\n${checked} cenários de integração passaram com PostgreSQL e os RPCs reais.`);
   if (process.argv.includes("--serve")) {
     const { createServer } = await import("node:http");
